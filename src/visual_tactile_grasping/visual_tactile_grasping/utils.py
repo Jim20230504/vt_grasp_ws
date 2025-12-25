@@ -34,8 +34,8 @@ class GripperState(Enum):
     # 抓取时，指尖离桌面的高度
     GRASP_HEIGHT_OFFSET = 0.01
 
-# 机械臂预设姿态 (关节角度，单位：弧度，需根据实际情况修改)
-OBSERVATION_JOINT_POSE = [0.0, -0.5, 1.57, -1.57, 0.0, 0.0] 
+# 机械臂预设姿态
+OBSERVATION_JOINT_POSE = [115, 10, 60, 137, 121, 3] 
 DROP_OFF_JOINT_POSE = [1.57, -0.5, 1.0, -1.57, 0.0, 0.0]
 
 # 相机话题配置

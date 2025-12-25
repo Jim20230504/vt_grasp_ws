@@ -1,13 +1,17 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
 def generate_launch_description():
     
-    # --- 1. RealSense 相机 ---
+    # ==========================================
+    # 1. 硬件驱动层
+    # ==========================================
+
+    # [A] RealSense 相机
     realsense_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory('realsense2_camera'), 'launch', 'rs_launch.py')
@@ -18,24 +22,26 @@ def generate_launch_description():
         }.items(),
     )
 
-    # --- 2. 睿尔曼机械臂 ---
-    rm_moveit_launch = IncludeLaunchDescription(
+    # [B] 睿尔曼机械臂 (RM65) - 使用官方 Bringup
+    # 文档说 rm_bringup 可以一键启动 driver, control 和 moveit
+    rm_bringup_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory('rm_65_config'), 'launch', 'real_moveit_demo.launch.py')
+            os.path.join(get_package_share_directory('rm_bringup'), 'launch', 'rm_65_bringup.launch.py')
         ]),
-        launch_arguments={'rm_ip': '192.168.1.18'}.items(), 
+        # 确保传递正确的 IP 
+        # 注意：如果 bringup 内部写死了参数，你可能需要去修改 rm_driver/config/rm_65_config.yaml
     )
 
-    # --- 3. 大寰夹爪驱动 ---
+    # [C] 大寰夹爪驱动
     gripper_node = Node(
         package='dh_gripper_driver',
         executable='dh_gripper_driver',
         name='dh_gripper_driver',
         output='screen',
-        parameters=[{'port': '/dev/ttyUSB0'}] 
+        parameters=[{'port': '/dev/ttyUSB0'}] # 请确认端口
     )
 
-    # --- 4. 触觉传感器驱动 ---
+    # [D] 触觉传感器驱动
     tactile_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory('tactile_sensor_ros'), 'launch', 'sensor.launch.py')
@@ -43,49 +49,50 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # [新增] 手眼标定静态 TF 发布节点
+    # 2. 坐标变换 (TF)
     # ==========================================
-    # 作用：连接机械臂末端(link6)和相机(camera_link)
-    # 参数格式：X Y Z (米) Yaw Pitch Roll (弧度) parent_frame child_frame
-    # 请根据实际安装位置修改前三个数字 (X, Y, Z)
-    hand_eye_tf_node = Node(
+    
+    # 手眼标定: link6 (法兰) -> camera_link
+    # 请务必根据实际测量修改 XYZ
+    hand_eye_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
-        name='hand_eye_tf_publisher',
-        # 假设相机镜头中心在法兰中心前方5cm(x=0.05), 上方2cm(z=0.02)
-        arguments=['0.05', '0.0', '0.02', '0.0', '0.0', '0.0', 'link6', 'camera_link']
+        name='hand_eye_tf',
+        arguments=['0.05', '0.0', '0.02', '0.0', '0.0', '0.0', 'Link6', 'camera_link']
     )
-    # 定义夹爪指尖中心相对于法兰(link6)的位置
-    # AG-95 长度约为 0.16m (Z轴向下为负? 注意：RM65 link6 的 Z 轴通常是垂直法兰面向外的)
-    # 假设 link6 Z轴朝外，那么指尖就在 Z = 0.16m 处
+
+    # 夹爪TCP: link6 -> gripper_tcp (指尖)
+    # 大寰 AG-95 长度
     gripper_tcp_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='gripper_tcp_tf',
-        # X=0, Y=0, Z=0.20 (20cm), 后面是旋转 (0,0,0)
-        arguments=['0.0', '0.0', '0.30', '0.0', '0.0', '0.0', 'link6', 'gripper_tcp']
+        arguments=['0.0', '0.0', '0.30', '0.0', '0.0', '0.0', 'Link6', 'gripper_tcp']
     )
 
-    # --- 5. 主控制器 ---
-    main_controller_node = Node(
+    # ==========================================
+    # 3. 应用层
+    # ==========================================
+
+    # 我们的主控制器 (延迟15秒启动，确保 MoveIt 完全就绪)
+    main_controller = Node(
         package='visual_tactile_grasping',
         executable='main_controller',
         name='visual_tactile_controller',
         output='screen'
     )
     
-    delayed_main_controller = TimerAction(
-        period=10.0, 
-        actions=[main_controller_node]
+    delayed_controller = TimerAction(
+        period=15.0, 
+        actions=[main_controller]
     )
 
-    
     return LaunchDescription([
         realsense_launch,
-        rm_moveit_launch,
+        rm_bringup_launch,
         gripper_node,
         tactile_launch,
-        hand_eye_tf_node,  
+        hand_eye_tf,
         gripper_tcp_tf,
-        delayed_main_controller
+        delayed_controller
     ])

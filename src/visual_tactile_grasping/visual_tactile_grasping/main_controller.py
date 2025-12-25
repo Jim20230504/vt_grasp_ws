@@ -21,7 +21,7 @@ class VisualTactileController(Node):
         
         # 初始化模块
         self.perception = PerceptionModule(self)
-        self.motion = MotionControl(self, group_name="arm_group") # 组名需匹配MoveIt配置
+        self.motion = MotionControl(self, group_name="rm_group") # 组名需匹配MoveIt配置
         self.gripper = TactileGripper(self)
         
         # 控制循环定时器 (10Hz)
@@ -98,7 +98,7 @@ class VisualTactileController(Node):
             self.get_logger().info(f"Gripper Length: {GRIPPER_LENGTH:.3f}")
             self.get_logger().info(f"Commanding Flange to Z: {target_flange_z:.3f}")
             
-            # ... (四元数部分不变)
+            # (四元数部分)
             q_down = [1.0, 0.0, 0.0, 0.0] 
             
             # 发送指令给 link6

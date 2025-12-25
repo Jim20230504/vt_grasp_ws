@@ -27,7 +27,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'main_controller = visual_tactile_grasping.main_controller:main'
+            'main_controller = visual_tactile_grasping.main_controller:main',
+            'test_tactile_algo = visual_tactile_grasping.test_tactile_algo:main',
         ],
     },
 )

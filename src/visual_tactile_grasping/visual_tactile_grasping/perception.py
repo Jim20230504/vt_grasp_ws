@@ -11,6 +11,7 @@ import tf2_ros
 import tf2_geometry_msgs
 from geometry_msgs.msg import PointStamped
 import image_geometry
+from rclpy.qos import qos_profile_sensor_data
 
 class PerceptionModule:
     def __init__(self, node: Node):
@@ -27,15 +28,19 @@ class PerceptionModule:
         self.latest_depth_img = None
         self.camera_info = None
         
-        # 订阅话题
+        # 订阅话题 (关键修改：使用 qos_profile_sensor_data)
         from visual_tactile_grasping.utils import TOPIC_COLOR, TOPIC_DEPTH, TOPIC_INFO
         
+        # 相机内参通常是 Reliable 的 (Transient Local)，保持默认或设为 10 即可
         self.sub_info = node.create_subscription(
             CameraInfo, TOPIC_INFO, self.info_callback, 10)
+            
+        # 图像数据通常是 Best Effort 的，必须匹配
         self.sub_color = node.create_subscription(
-            Image, TOPIC_COLOR, self.color_callback, 10)
+            Image, TOPIC_COLOR, self.color_callback, qos_profile_sensor_data)
+            
         self.sub_depth = node.create_subscription(
-            Image, TOPIC_DEPTH, self.depth_callback, 10)
+            Image, TOPIC_DEPTH, self.depth_callback, qos_profile_sensor_data)
             
         # TF Buffer 用于坐标变换 (Camera -> Base)
         self.tf_buffer = tf2_ros.Buffer()
