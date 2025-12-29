@@ -263,8 +263,8 @@ class TactileGripper:
         # ----------------------------------------------------
         elif self.state == GState.GENTLE_CLAMPING:
             if not self.command_sent:
-                # 稍微加一点点预紧力 (挤压 2%)
-                squeeze = self.max_open_pos * 0.02
+                # 稍微加一点点预紧力 (挤压 1%)
+                squeeze = self.max_open_pos * 0.01
                 final_pos = max(0.0, self.target_gripper_pos - squeeze)
                 
                 # 保持较小的力控

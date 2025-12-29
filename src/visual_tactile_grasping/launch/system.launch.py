@@ -48,17 +48,25 @@ def generate_launch_description():
         ])
     )
 
-    # ==========================================
+   # ==========================================
     # 2. 坐标变换 (TF)
     # ==========================================
+    # 手眼标定: Link6 (法兰) -> camera_link
+    # 使用你计算出的精确数值
+    # 格式: x y z qx qy qz qw frame_id child_frame_id
+    # T(平移): 0.03357, 0.07922, -0.18146 (来自标定JSON)
+    # R(旋转): 0.00419, 0.00374, 0.99998, -0.00072 (来自你计算的Quat)
     
-    # 手眼标定: link6 (法兰) -> camera_link
-    # 请务必根据实际测量修改 XYZ
     hand_eye_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='hand_eye_tf',
-        arguments=['0.05', '0.0', '0.02', '0.0', '0.0', '0.0', 'Link6', 'camera_link']
+        arguments=[
+            '0.03357', '0.07922', '-0.18146',   # x, y, z (单位: 米)
+            '0.00419', '0.00374', '0.99998', '-0.00072', # qx, qy, qz, qw
+            'Link6',            # 父坐标系 (法兰)
+            'camera_link'       # 子坐标系 (相机)
+        ]
     )
 
     # 夹爪TCP: link6 -> gripper_tcp (指尖)
