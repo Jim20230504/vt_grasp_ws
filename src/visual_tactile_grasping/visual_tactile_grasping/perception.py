@@ -68,7 +68,7 @@ class PerceptionModule:
 
     def detect_object(self):
         """
-        使用OpenCV检测图像中最显著的物体（例如鸡蛋或豆腐）。
+        使用OpenCV检测图像中最显著的物体。
         简单逻辑：转灰度 -> 模糊 -> 阈值 -> 轮廓 -> 最大面积
         :return: (found, u, v) found为bool, (u, v)为像素坐标
         """
@@ -81,7 +81,7 @@ class PerceptionModule:
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
         # 这里可以使用自适应阈值或Canny边缘检测，根据物体颜色调整
-        # 假设物体与背景对比度较高 (例如白色豆腐在黑色桌面上)
+        # 假设物体与背景对比度较高 
         _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)
         
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

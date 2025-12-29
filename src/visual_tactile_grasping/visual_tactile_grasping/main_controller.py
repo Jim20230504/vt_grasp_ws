@@ -48,7 +48,7 @@ class VisualTactileController(Node):
         elif self.state == SystemState.MOVING_TO_OBSERVE:
             self.get_logger().info("Moving to Observation Pose...")
             future = self.motion.move_to_joint_pose(OBSERVATION_JOINT_POSE)
-            # 在简单实现中，我们不阻塞等待Future，而是假设MoveIt会处理。
+            # 不阻塞等待Future，而是假设MoveIt会处理。嘛
             # 更好的做法是检查Future状态，这里简化处理，增加一个等待时间状态
             self.wait_time = 50 # 5秒等待运动完成
             self.state = SystemState.DETECTING # 实际上应该有个 WAIT_FOR_MOVE 状态

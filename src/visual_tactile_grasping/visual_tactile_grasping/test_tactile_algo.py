@@ -49,7 +49,7 @@ class TactileAlgoTester(Node):
             if self.gripper.state != GState.OPEN and self.gripper.state != GState.WAIT_OPEN:
                 self.gripper.send_gripper_cmd(1000) # Open
                 self.test_phase = "WAIT_FOR_OBJECT"
-                print("\n>>> 夹爪已打开。请手动将物体(鸡蛋/豆腐)放入指尖之间。")
+                print("\n>>> 夹爪已打开。请手动将物体放入指尖之间。")
                 print(">>> 准备好后，按 [Enter] 键开始抓取...")
 
         # 2. 等待用户放入物体

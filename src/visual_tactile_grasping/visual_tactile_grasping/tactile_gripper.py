@@ -3,248 +3,303 @@
 
 import rclpy
 from rclpy.node import Node
+import time
 import numpy as np
 
-# --- 导入真实的消息类型 ---
+# 导入消息类型
 try:
-    # 假设你的大寰夹爪包名为 dh_gripper_msgs (如果不是请修改此处)
     from dh_gripper_msgs.msg import GripperCtrl, GripperState as DHGripperState
 except ImportError:
-    # 如果本地没有大寰消息包，使用Mock防止报错(仅调试用)
+    # Mock for testing without driver
     class GripperCtrl:
         def __init__(self): self.initialize = False; self.position = 0.0; self.force = 0.0; self.speed = 0.0
     class DHGripperState:
         pass
 
-# --- 导入你提供的触觉消息类型 ---
-# 对应 src/tactile_sensor_ros/msg/TactileArray.msg 和 FingerData.msg
-from tactile_sensor_ros.msg import TactileArray, FingerData
-
+from tactile_sensor_ros.msg import TactileArray
 from visual_tactile_grasping.utils import GripperState as GState
 
 class TactileGripper:
     def __init__(self, node: Node):
         self.node = node
         
-        # --- 参数配置 ---
-        self.open_pos = 1000.0       # 夹爪打开位置 (0-1000)
-        self.contact_threshold = 0.5 # 法向力(nf)接触阈值 (需根据 float32[] nf 的实际量级调整，假设单位是N)
-        self.slip_force_threshold = 2.0 # 切向力(tf)滑动报警阈值
-        self.stable_contact_count_req = 5 # 需要连续多少帧检测到接触才算稳定
+        # === 核心参数配置 (针对易碎品优化) ===
+        # 抓取速度 (0-100): 越慢越安全，给传感器反应时间
+        self.grasp_speed = 20.0 
+        # 抓取力 (0-100): 设为较小值，硬件层保护
+        self.grasp_force = 30.0 
+        # 触觉触发阈值
+        self.contact_threshold = 0.3 
         
-        # --- 内部变量 ---
+        # === 内部状态 ===
         self.state = GState.INIT
         self.current_gripper_pos = 0.0
         self.target_gripper_pos = 0.0
         
-        # 触觉状态存储
-        # 结构: { sensor_index: {'nf': max_nf_val, 'tf': max_tf_val, 'is_touch': bool} }
-        self.tactile_status = {} 
+        self.max_open_pos = None       
+        self.range_calibrated = False
+        self.calibration_start_time = None
+        self.closing_start_time = None
+        self.command_sent = False # 关键标志位：确保指令只发一次
         
-        # 稳定计数器
+        # 触觉数据
+        self.raw_tactile_data = {}
+        self.tactile_baseline = {}
+        self.is_calibrated = False
+        
+        # 计数器
+        self.cali_sample_count = 0
+        self.cali_samples_req = 20
         self.contact_stability_counter = 0
-        self.tick_counter = 0
-        self.first_touch_pos = None
         
-        # --- ROS 接口 ---
-        
-        # 1. 夹爪控制 Publisher (大寰)
+        # === ROS接口 ===
         self.pub_gripper = node.create_publisher(GripperCtrl, '/gripper/ctrl', 10)
         
-        # 2. 夹爪状态 Subscriber
         self.sub_gripper_state = node.create_subscription(
             DHGripperState, '/gripper/states', self.gripper_state_callback, 10)
             
-        # 3. 触觉数据 Subscriber (根据 tactile_node.py 里的发布话题 'tactile_data')
         self.sub_tactile = node.create_subscription(
-            TactileArray, 
-            '/tactile_data', # 对应 tactile_node.py 中的 topic name
-            self.tactile_callback, 
-            10
-        )
+            TactileArray, '/tactile_data', self.tactile_callback, 10)
             
-        self.node.get_logger().info("Tactile Gripper Module Initialized with Real Tactile Driver.")
+        self.node.get_logger().info(f"Tactile Gripper: V11 (Guarded Move - One Shot)")
 
     def gripper_state_callback(self, msg):
-        """更新夹爪实时位置"""
+        """读取夹爪实时反馈"""
         if hasattr(msg, 'position'):
-            self.current_gripper_pos = msg.position
+            new_pos = float(msg.position)
+            # 自动记录最大张开位置
+            if self.max_open_pos is None or new_pos > self.max_open_pos:
+                self.max_open_pos = new_pos
+            self.current_gripper_pos = new_pos
 
     def tactile_callback(self, msg: TactileArray):
-        """
-        处理真实的触觉传感器数据
-        msg: TactileArray 包含多个 FingerData
-        """
-        # 遍历所有手指数据
+        """读取触觉数据"""
         for finger in msg.fingers:
-            # finger 是 tactile_sensor_ros/FingerData 类型
-            # 包含: int32 sensor_index, float32[] nf, float32[] tf ...
-            
             idx = finger.sensor_index
-            
-            # 1. 提取法向力 (Normal Force)
-            # nf 是一个数组，代表该手指上不同感测单元的压力。取最大值作为该手指的受力指标。
-            max_nf = 0.0
-            if len(finger.nf) > 0:
-                max_nf = max(finger.nf)
-            
-            # 2. 提取切向力 (Tangential Force)
-            max_tf = 0.0
-            if len(finger.tf) > 0:
-                max_tf = max(finger.tf)
-            
-            # 3. 判断接触状态
-            is_touching = max_nf > self.contact_threshold
-            
-            # 4. 更新状态
-            self.tactile_status[idx] = {
-                'nf': max_nf,
-                'tf': max_tf,
-                'is_touch': is_touching
-            }
-            
-        # 调试日志 (可选，防止刷屏)
-        # self.node.get_logger().debug(f"Tactile: {self.tactile_status}")
+            max_nf = max(finger.nf) if len(finger.nf) > 0 else 0.0
+            max_tf = max(finger.tf) if len(finger.tf) > 0 else 0.0
+            self.raw_tactile_data[idx] = {'nf': max_nf, 'tf': max_tf}
 
-    def send_gripper_cmd(self, pos, speed=50, force=50):
-        """发送大寰夹爪控制指令"""
+    def send_gripper_cmd(self, pos, speed=None, force=None, do_init=False):
+        """
+        发送控制指令
+        模仿命令行: {initialize: false, position: ..., force: ..., speed: ...}
+        """
         cmd = GripperCtrl()
-        cmd.initialize = True
+        cmd.initialize = do_init 
         cmd.position = float(pos)
-        cmd.speed = float(speed)
-        cmd.force = float(force)
+        
+        # 如果不指定速度/力，使用默认的安全值
+        cmd.speed = float(speed) if speed is not None else self.grasp_speed
+        cmd.force = float(force) if force is not None else self.grasp_force
+        
         self.pub_gripper.publish(cmd)
+        
+        # 仅用于调试日志
+        # init_str = "INIT=True" if do_init else "Init=False"
+        # self.node.get_logger().info(f"CMD -> Pos:{pos:.0f} Spd:{cmd.speed:.0f} {init_str}")
+
+    def get_normalized_nf(self, idx):
+        """获取去皮后的法向力"""
+        if idx not in self.raw_tactile_data: return 0.0
+        raw_val = self.raw_tactile_data[idx]['nf']
+        baseline = self.tactile_baseline.get(idx, 0.0)
+        return max(0.0, raw_val - baseline)
 
     def check_any_touch(self):
-        """检查是否有任意手指接触"""
-        for idx, data in self.tactile_status.items():
-            if data['is_touch']:
+        """检测任意接触"""
+        for idx in self.raw_tactile_data:
+            if self.get_normalized_nf(idx) > self.contact_threshold:
                 return True
         return False
 
     def check_both_touch(self):
-        """检查是否左右手指(假设index 0 和 1)同时接触"""
-        # 假设 sensor_index 0 是左指, 1 是右指 (需根据实际硬件ID调整)
-        t0 = self.tactile_status.get(0, {}).get('is_touch', False)
-        t1 = self.tactile_status.get(1, {}).get('is_touch', False)
-        return t0 and t1
+        """检测双指接触"""
+        touch_count = 0
+        for idx in self.raw_tactile_data:
+            if self.get_normalized_nf(idx) > self.contact_threshold:
+                touch_count += 1
+        return touch_count >= 2
 
-    def detect_slip(self):
-        """
-        基于切向力(tf)的简单滑动检测逻辑。
-        如果切向力突然增大或者超过安全阈值，认为发生滑动。
-        """
-        is_slipping = False
-        for idx, data in self.tactile_status.items():
-            # 逻辑1: 绝对阈值判断 (假设 tf 单位对应摩擦力)
-            if data['tf'] > self.slip_force_threshold:
-                self.node.get_logger().warn(f"Finger {idx} Slip Detected! TF={data['tf']:.2f}")
-                is_slipping = True
-        return is_slipping
+    def calibrate_gripper_range(self):
+        """启动时先让夹爪完全张开，确定量程"""
+        if self.range_calibrated: return True
+        
+        # 第一次进入，发送初始化指令
+        if not self.command_sent:
+            self.node.get_logger().info("Initializing Gripper (Pos=100000, Init=True)...")
+            self.send_gripper_cmd(1000.0, speed=50, force=50, do_init=True)
+            self.calibration_start_time = time.time()
+            self.command_sent = True
+            return False
+        
+        # 等待 3 秒让夹爪动完
+        if time.time() - self.calibration_start_time > 3.0: 
+            if self.max_open_pos is not None:
+                self.range_calibrated = True
+                self.node.get_logger().info(f"Gripper Ready. Max Pos: {self.max_open_pos}")
+                self.command_sent = False # 重置标志位，供后续使用
+                return True
+        return False
 
     def start_grasping_sequence(self):
         self.state = GState.INIT
-        self.node.get_logger().info("Starting Adaptive Grasping Sequence.")
+        self.node.get_logger().info("Starting V11 Sequence.")
 
     def tick(self):
-        """
-        状态机循环 (被 Main Controller 定时调用)
-        """
+        """主逻辑循环 (建议频率 20Hz-50Hz)"""
         
-        # 1. 初始化
+        # ----------------------------------------------------
+        # 1. 系统初始化与范围校准
+        # ----------------------------------------------------
         if self.state == GState.INIT:
-            self.node.get_logger().info("Grasping: Initializing...")
+            if not self.calibrate_gripper_range(): return "RUNNING"
             self.state = GState.OPEN
+            self.command_sent = False
             return "RUNNING"
 
-        # 2. 打开夹爪
+        # ----------------------------------------------------
+        # 2. 确保完全张开
+        # ----------------------------------------------------
         elif self.state == GState.OPEN:
-            self.send_gripper_cmd(self.open_pos)
+            if not self.command_sent:
+                # 使用 Init=False 发送运动指令
+                self.send_gripper_cmd(self.max_open_pos, do_init=False)
+                self.command_sent = True
+            
+            # 简单延时等待到位
             self.tick_counter = 0
             self.state = GState.WAIT_OPEN
             return "RUNNING"
 
-        # 3. 等待打开
+        # ----------------------------------------------------
+        # 3. 等待 + 准备触觉标定
+        # ----------------------------------------------------
         elif self.state == GState.WAIT_OPEN:
             self.tick_counter += 1
-            # 简单延时，实际可判断 abs(current - open) < epsilon
-            if self.tick_counter > 20: 
+            if self.tick_counter > 20: # 约1秒
                 self.state = GState.CALIBRATION
+                self.cali_sample_count = 0
+                self.tactile_baseline = {}
+                self.command_sent = False
             return "RUNNING"
 
-        # 4. 传感器标定 (如果硬件需要)
+        # ----------------------------------------------------
+        # 4. 触觉传感器去皮 (Taring)
+        # ----------------------------------------------------
         elif self.state == GState.CALIBRATION:
-            # 实际驱动中可能不需要手动标定，这里作为占位
-            self.node.get_logger().info("Grasping: Sensors Ready.")
-            self.target_gripper_pos = self.open_pos
-            self.state = GState.CLOSING_UNTIL_TOUCH
+            if self.cali_sample_count == 0:
+                self.node.get_logger().info("Taring Sensors...")
+            
+            for idx, data in self.raw_tactile_data.items():
+                if idx not in self.tactile_baseline: self.tactile_baseline[idx] = 0.0
+                self.tactile_baseline[idx] += data['nf']
+            self.cali_sample_count += 1
+            
+            if self.cali_sample_count >= self.cali_samples_req:
+                for idx in self.tactile_baseline:
+                    self.tactile_baseline[idx] /= self.cali_samples_req
+                
+                self.is_calibrated = True
+                self.state = GState.CLOSING_UNTIL_TOUCH
+                self.command_sent = False
+                self.closing_start_time = time.time()
+                self.node.get_logger().info("Calibration Done. START CLOSING (Guarded Move).")
             return "RUNNING"
 
-        # 5. 闭合直到初次接触
+        # ----------------------------------------------------
+        # 5. 闭合直到接触 (Guarded Move)
+        # ----------------------------------------------------
         elif self.state == GState.CLOSING_UNTIL_TOUCH:
-            # 步进闭合
-            step_size = 5.0 
-            self.target_gripper_pos -= step_size
-            self.send_gripper_cmd(self.target_gripper_pos, speed=30) 
             
-            # 使用真实的触觉判断
+            # [A] 动作发起：只发一次指令
+            if not self.command_sent:
+                # 目标：0.0 (全闭)
+                # 速度：self.grasp_speed (20%) -> 慢速闭合，方便刹车
+                # 力：self.grasp_force (30%) -> 硬件保护
+                self.send_gripper_cmd(0.0, speed=self.grasp_speed, force=self.grasp_force, do_init=False)
+                self.command_sent = True
+                self.node.get_logger().info(f"Sent Slow Close CMD (Target=0, Speed={self.grasp_speed})")
+            
+            # [B] 实时监测：如果碰到，立即刹车
             if self.check_any_touch():
-                self.node.get_logger().info(f"First Touch Detected at Pos {self.current_gripper_pos:.1f}")
-                self.first_touch_pos = self.current_gripper_pos
-                # 立即停止夹爪 (发送当前位置)
-                self.send_gripper_cmd(self.current_gripper_pos, speed=100)
+                self.node.get_logger().info(f"!!! TOUCH DETECTED at {self.current_gripper_pos:.0f} !!!")
+                
+                # [刹车逻辑]：立即发送当前位置作为目标
+                stop_pos = self.current_gripper_pos
+                self.target_gripper_pos = stop_pos 
+                # 使用较快的速度刹车，并维持当前力矩
+                self.send_gripper_cmd(stop_pos, speed=100, force=self.grasp_force, do_init=False)
+                
                 self.contact_stability_counter = 0
                 self.state = GState.ADJUSTING_FOR_BOTH_TOUCH
+                self.command_sent = False
+                return "RUNNING"
             
-            elif self.target_gripper_pos <= 0.0:
-                self.node.get_logger().warn("Gripper fully closed but no object detected.")
+            # [C] 到底检测：如果长时间运行且位置接近0
+            elapsed = time.time() - self.closing_start_time
+            threshold = self.max_open_pos * 0.02 # 2%
+            
+            if elapsed > 2.0 and self.current_gripper_pos < threshold:
+                self.node.get_logger().warn(f"Fully closed (Pos={self.current_gripper_pos:.0f}). No object.")
                 self.state = GState.RELEASE
-                
+                self.command_sent = False
+            
             return "RUNNING"
 
-        # 6. 调整直至双指稳定接触
+        # ----------------------------------------------------
+        # 6. 双指平衡调整 (可选)
+        # ----------------------------------------------------
         elif self.state == GState.ADJUSTING_FOR_BOTH_TOUCH:
-            # 如果两指都接触
-            if self.check_both_touch():
-                self.contact_stability_counter += 1
-                if self.contact_stability_counter >= self.stable_contact_count_req:
-                    self.node.get_logger().info("Both fingers stable contact.")
-                    self.state = GState.GENTLE_CLAMPING
-            else:
-                # 只有一边接触，继续微小步进
-                self.contact_stability_counter = 0
-                self.target_gripper_pos -= 1.0 # 极慢速逼近
-                self.send_gripper_cmd(self.target_gripper_pos, speed=5)
-                
+            # 简单策略：如果已经接触，就直接进入保持，不再微调，防止捏碎鸡蛋
+            # 对于易碎品，检测到接触后立即停止是最安全的
+            self.node.get_logger().info("Touch detected. Holding position.")
+            self.state = GState.GENTLE_CLAMPING
+            self.command_sent = False
             return "RUNNING"
 
-        # 7. 柔顺抓紧 (Egg/Tofu Mode)
+        # ----------------------------------------------------
+        # 7. 柔顺保持
+        # ----------------------------------------------------
         elif self.state == GState.GENTLE_CLAMPING:
-            # 鸡蛋/豆腐策略：在接触点基础上，只增加极小的过压量
-            # 这里的 10.0 需要根据夹爪单位（如脉冲或mm）调整，确保不会捏碎
-            final_grip_pos = self.current_gripper_pos - 10.0 
-            
-            # 力控模式：限制最大力 force=20%
-            self.send_gripper_cmd(final_grip_pos, speed=10, force=20)
-            
-            self.node.get_logger().info("Gentle Grasp Applied. Ready to lift.")
-            self.state = GState.SLIP_DETECTION
-            return "SUCCESS" 
+            if not self.command_sent:
+                # 稍微加一点点预紧力 (挤压 2%)
+                squeeze = self.max_open_pos * 0.02
+                final_pos = max(0.0, self.target_gripper_pos - squeeze)
+                
+                # 保持较小的力控
+                self.send_gripper_cmd(final_pos, speed=10, force=self.grasp_force, do_init=False)
+                self.target_gripper_pos = final_pos
+                self.command_sent = True
+                
+                self.node.get_logger().info(f"Grasped Secured at {final_pos:.0f}")
+                self.state = GState.SLIP_DETECTION
+                
+            return "SUCCESS"
 
-        # 8. 动态滑动检测 (抬起过程中监控)
+        # ----------------------------------------------------
+        # 8. 防滑监测 (被动)
+        # ----------------------------------------------------
         elif self.state == GState.SLIP_DETECTION:
-            # 这是一个持续监控状态
-            if self.detect_slip():
-                self.node.get_logger().warn(">>> SLIP DETECTED! Increasing Grip Force! <<<")
-                # 动态调整：夹紧一点，并增加力矩限制
-                self.current_gripper_pos -= 5.0
-                self.send_gripper_cmd(self.current_gripper_pos, speed=100, force=50) # 增加力
+            # 在这里，我们只监测，不主动发指令，除非检测到滑动
+            # 如果之前发的指令有效，夹爪应该会保持在 final_pos
+            
+            # 这里简单做个维持：每隔一段时间发一次心跳？
+            # 实际上大寰夹爪不需要心跳，只要不掉电就会保持。
+            
+            # TODO: 如果检测到滑动，可以增加 target_gripper_pos 并重新发送
+            pass 
             
             return "RUNNING"
 
+        # ----------------------------------------------------
         # 9. 释放
+        # ----------------------------------------------------
         elif self.state == GState.RELEASE:
-            self.send_gripper_cmd(self.open_pos)
+            if not self.command_sent:
+                self.send_gripper_cmd(self.max_open_pos, do_init=False)
+                self.command_sent = True
+                self.node.get_logger().info("Releasing")
             return "FAILURE"
 
         return "RUNNING"
