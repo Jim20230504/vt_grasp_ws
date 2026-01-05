@@ -48,7 +48,7 @@ def generate_launch_description():
         ])
     )
 
-   # ==========================================
+    # ==========================================
     # 2. 坐标变换 (TF)
     # ==========================================
     # 手眼标定: Link6 (法兰) -> camera_link
@@ -57,25 +57,65 @@ def generate_launch_description():
     # T(平移): 0.03357, 0.07922, -0.18146 (来自标定JSON)
     # R(旋转): 0.00419, 0.00374, 0.99998, -0.00072 (来自你计算的Quat)
     
+    # hand_eye_tf = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     name='hand_eye_tf',
+    #     arguments=[
+    #         # '0.03357', '0.07922', '-0.18146',   # x, y, z (单位: 米)
+    #         # '0.00419', '0.00374', '0.99998', '-0.00072', # qx, qy, qz, qw
+    #         # 'Link6',            # 父坐标系 (法兰)
+    #         # 'camera_link'       # 子坐标系 (相机)
+    #         '0.037', '0.269', '0.591',  # 注意y坐标可能取反
+    #         '0.670', '0.667', '-0.248', '-0.213',  # 从tf2_echo获取的四元数
+    #         'Link6', 'camera_link'
+    #     ]
+    # )
+
+    # ==========================================
+    # 2. 坐标变换 (TF)
+    # ==========================================
+    # 手眼标定: Link6 (法兰) -> calibrated_optical_frame
+    
     hand_eye_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='hand_eye_tf',
         arguments=[
-            '0.03357', '0.07922', '-0.18146',   # x, y, z (单位: 米)
-            '0.00419', '0.00374', '0.99998', '-0.00072', # qx, qy, qz, qw
-            'Link6',            # 父坐标系 (法兰)
-            'camera_link'       # 子坐标系 (相机)
+            '--x', '0.03357', '--y', '0.07922', '--z', '-0.18146',
+            '--qx', '0.00419', '--qy', '0.00374', '--qz', '0.99998', '--qw', '-0.00072',
+            '--frame-id', 'Link6',          # 父坐标系
+            '--child-frame-id', 'calibrated_optical_frame' 
         ]
     )
 
-    # 夹爪TCP: link6 -> gripper_tcp (指尖)
-    # 大寰 AG-95 长度
+    # ==========================================
+    # [新增] 3. 相机内部桥接 (Bridge TF)
+    # ==========================================
+    # 作用: 将 RealSense 的 TF 树 (以 camera_link 为根) 
+    #      挂载到我们的标定帧 (calibrated_optical_frame) 上。
+    # 变换: Optical Frame -> Camera Link 是一个固定的旋转。
+    # 平移: 设为 0 (忽略光心到外壳螺丝孔的微小距离，约1.5cm，对抓取影响不大)
+    # 旋转: qx=0.5, qy=-0.5, qz=0.5, qw=0.5
+    
+    camera_bridge_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_bridge_tf',
+        arguments=[
+            '--x', '0.0', '--y', '0.0', '--z', '0.0',
+            '--qx', '0.5', '--qy', '-0.5', '--qz', '0.5', '--qw', '0.5',
+            '--frame-id', 'calibrated_optical_frame',  # 父 (我们的标定末端)
+            '--child-frame-id', 'camera_link'          # 子 (RealSense 的根)
+        ]
+    )
+
+    # 夹爪TCP: Link6 -> gripper_tcp (指尖)
     gripper_tcp_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='gripper_tcp_tf',
-        arguments=['0.0', '0.0', '0.30', '0.0', '0.0', '0.0', 'Link6', 'gripper_tcp']
+        arguments=['0.0', '0.0', '0.22', '0.0', '0.0', '0.0', 'Link6', 'gripper_tcp']
     )
 
     # ==========================================
@@ -101,6 +141,7 @@ def generate_launch_description():
         gripper_node,
         tactile_launch,
         hand_eye_tf,
+        camera_bridge_tf,
         gripper_tcp_tf,
         delayed_controller
     ])

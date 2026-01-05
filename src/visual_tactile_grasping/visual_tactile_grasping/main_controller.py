@@ -6,6 +6,9 @@ from rclpy.node import Node
 import time
 from geometry_msgs.msg import Quaternion
 
+# 导入消息类型
+from visualization_msgs.msg import Marker
+
 
 from visual_tactile_grasping.utils import SystemState, OBSERVATION_JOINT_POSE, DROP_OFF_JOINT_POSE, GRIPPER_LENGTH
 from visual_tactile_grasping.perception import PerceptionModule
@@ -23,7 +26,7 @@ class VisualTactileController(Node):
         self.target_pose = None 
         
         # 初始化模块
-        # 注意：这里加载 YOLOv5 模型，可能需要几秒钟
+        # 注意：这里加载 YOLOv5 模型
         self.perception = PerceptionModule(self, model_name='yolov5s') 
         
         # 确保组名正确 (根据之前的调试，SRDF中通常是 rm_group)
@@ -41,6 +44,36 @@ class VisualTactileController(Node):
         self.wait_time = 0
         self.state = SystemState.INITIALIZING
 
+        # 创建一个 Marker 发布器
+        self.marker_pub = self.create_publisher(Marker, '/visualization_marker', 10)
+
+    def publish_debug_marker(self, x, y, z):
+        """发布一个红色小球到目标位置"""
+        marker = Marker()
+        marker.header.frame_id = "base_link"
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "grasp_target"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        
+        # 位置
+        marker.pose.position.x = x
+        marker.pose.position.y = y
+        marker.pose.position.z = z
+        marker.pose.orientation.w = 1.0
+        
+        # 尺寸 (2cm 的小球)
+        marker.scale.x = 0.02
+        marker.scale.y = 0.02
+        marker.scale.z = 0.02
+        
+        # 颜色 (红色)
+        marker.color.r = 1.0
+        marker.color.a = 1.0 # 不透明
+        
+        self.marker_pub.publish(marker)
+    
     def control_loop(self):
         """主状态机循环"""
         
@@ -99,6 +132,9 @@ class VisualTactileController(Node):
         elif self.state == SystemState.PLANNING_APPROACH:
             # 解包 7D 姿态
             tx, ty, tz, qx, qy, qz, qw = self.target_pose
+
+            # [调用] 发布可视化标记
+            self.publish_debug_marker(tx, ty, tz)
             
             # 计算法兰目标高度
             # 目标：指尖到达物体上方 10cm (预备点)

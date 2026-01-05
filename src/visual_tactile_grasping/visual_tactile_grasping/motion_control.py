@@ -23,6 +23,7 @@ class MotionControl:
             self.node.get_logger().error("MoveGroup action server not available!")
         else:
             self.node.get_logger().info("MoveGroup Interface Initialized.")
+        
 
     def move_to_joint_pose(self, joint_values):
         """
@@ -32,10 +33,12 @@ class MotionControl:
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = self.group_name
         goal_msg.request.allowed_planning_time = 5.0
+        goal_msg.request.max_velocity_scaling_factor = 0.1
+        goal_msg.request.max_acceleration_scaling_factor = 0.1
         
         # 构建关节约束
         constraints = Constraints()
-        # 假设RM65有6个关节，名称通常为 joint1...joint6，需查阅你的URDF
+        # RM65 6个关节
         joint_names = ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']
         
         for i, val in enumerate(joint_values):
@@ -53,52 +56,63 @@ class MotionControl:
 
     def move_to_cartesian_pose(self, x, y, z, qx, qy, qz, qw):
         """
-        笛卡尔空间规划 (移动到指定位置和姿态)
+        笛卡尔空间规划 (移动到指定位置和姿态) - Low Level Action 版
         """
+        # 1. 创建 Goal 消息
         goal_msg = MoveGroup.Goal()
         goal_msg.request.group_name = self.group_name
         goal_msg.request.allowed_planning_time = 5.0
         
+        
+        # 速度 0.0 ~ 1.0。
+        goal_msg.request.max_velocity_scaling_factor = 0.1
+        goal_msg.request.max_acceleration_scaling_factor = 0.1
+        
+        # 2. 构建约束
         constraints = Constraints()
         
-        # 位置约束
+        # --- 位置约束 (Position Constraint) ---
         pc = PositionConstraint()
         pc.header.frame_id = "base_link"
-        pc.link_name = "link6" # 末端执行器Link名称，需确认URDF
+        pc.link_name = "Link6" # 确保这里是你的末端 Link 名称
         pc.weight = 1.0
         
-        # 定义目标区域（此处设为极小框以代表点）
+        # 定义目标区域 (极小框)
         bv = BoundingVolume()
         pr = SolidPrimitive()
         pr.type = SolidPrimitive.BOX
-        pr.dimensions = [0.001, 0.001, 0.001] # 1mm tolerance
+        pr.dimensions = [0.001, 0.001, 0.001] # 1mm 容差
         bv.primitives.append(pr)
         
         pose = Pose()
         pose.position.x = x
         pose.position.y = y
         pose.position.z = z
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0) # 这里的姿态是相对于Region中心的
+        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0) # 区域本身的姿态(默认即可)
         bv.primitive_poses.append(pose)
         
         pc.constraint_region = bv
         constraints.position_constraints.append(pc)
         
-        # 姿态约束 (垂直向下)
+        # --- 姿态约束 (Orientation Constraint) ---
         oc = OrientationConstraint()
         oc.header.frame_id = "base_link"
-        oc.link_name = "link6"
+        oc.link_name = "Link6"
+        # 使用传入的四元数参数
         oc.orientation = Quaternion(x=qx, y=qy, z=qz, w=qw)
-        oc.absolute_x_axis_tolerance = 0.1
-        oc.absolute_y_axis_tolerance = 0.1
-        oc.absolute_z_axis_tolerance = 3.14 # 允许Z轴旋转自由度(如果物体是圆对称的)
+        # 容差：越小越精准，但也越难规划
+        oc.absolute_x_axis_tolerance = 0.05 
+        oc.absolute_y_axis_tolerance = 0.05
+        oc.absolute_z_axis_tolerance = 0.05 
         oc.weight = 1.0
         constraints.orientation_constraints.append(oc)
         
+        # 将约束加入目标
         goal_msg.request.goal_constraints.append(constraints)
         
+        # 发送目标 (假设你类里有 _send_goal 方法)
         return self._send_goal(goal_msg)
-
+    
     def _send_goal(self, goal_msg):
         """发送Action并等待结果"""
         self.node.get_logger().info("Sending Motion Goal...")

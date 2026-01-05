@@ -25,9 +25,9 @@ class TactileGripper:
         
         # === 核心参数配置 (针对易碎品优化) ===
         # 抓取速度 (0-100): 越慢越安全，给传感器反应时间
-        self.grasp_speed = 20.0 
+        self.grasp_speed = 10.0 
         # 抓取力 (0-100): 设为较小值，硬件层保护
-        self.grasp_force = 30.0 
+        self.grasp_force = 20.0 
         # 触觉触发阈值
         self.contact_threshold = 0.3 
         
@@ -127,7 +127,7 @@ class TactileGripper:
         
         # 第一次进入，发送初始化指令
         if not self.command_sent:
-            self.node.get_logger().info("Initializing Gripper (Pos=100000, Init=True)...")
+            self.node.get_logger().info("Initializing Gripper (Pos=1000, Init=True)...")
             self.send_gripper_cmd(1000.0, speed=50, force=50, do_init=True)
             self.calibration_start_time = time.time()
             self.command_sent = True
@@ -281,7 +281,7 @@ class TactileGripper:
         # 8. 防滑监测 (被动)
         # ----------------------------------------------------
         elif self.state == GState.SLIP_DETECTION:
-            # 在这里，我们只监测，不主动发指令，除非检测到滑动
+            # 只监测，不主动发指令，除非检测到滑动
             # 如果之前发的指令有效，夹爪应该会保持在 final_pos
             
             # 这里简单做个维持：每隔一段时间发一次心跳？
