@@ -14,6 +14,7 @@ class SystemState(Enum):
     ERROR = auto()
 
 class GripperState(Enum):
+    IDLE = auto()
     INIT = auto()
     OPEN = auto()
     WAIT_OPEN = auto()
@@ -38,4 +39,4 @@ DROP_OFF_JOINT_POSE = [1.57, -0.5, 1.2, 0.0, 1.0, 0.0]
 
 # 指尖目标Z = 法兰Z - 夹爪长度
 
-GRIPPER_LENGTH = 0.22
+# GRIPPER_LENGTH = 0.22

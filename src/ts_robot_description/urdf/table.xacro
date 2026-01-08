@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link name="table_link">    
+    <visual>
+        <origin xyz="-0.245 0 -0.76" rpy="0 0 -1.5708" />
+        <geometry>
+          <mesh filename="package://ts_robot_description/mesh/table/visual/table.stl"  scale = "0.001 0.001 0.001"/>
+        </geometry>
+        <material name="light_green"/>            
+    </visual>
+    <collision>
+        <origin xyz="-0.245 0 -0.76" rpy="0 0 -1.5708" />
+        <geometry>
+            <mesh filename="package://ts_robot_description/mesh/table/collision/table.stl"  scale = "0.001 0.001 0.001"/>
+        </geometry>
+    </collision>        
+    </link>
+</robot>

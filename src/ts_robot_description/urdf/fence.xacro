@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link name="fence_link">    
+    <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://ts_robot_description/mesh/fence/visual/fence.stl"  scale = "0.001 0.001 0.001"/>
+        </geometry>
+        <material name="transparent_gey"/>            
+    </visual>
+    <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+            <mesh filename="package://ts_robot_description/mesh/fence/collision/fence.stl"  scale = "0.001 0.001 0.001"/>
+        </geometry>
+    </collision>        
+    </link>
+</robot>

@@ -1,0 +1,37 @@
+digraph G {
+"ag95_base_link" -> "ag95_body"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"hand_tool" -> "ag95_base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"Link6" -> "hand_tool"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"Link5" -> "Link6"[label=" Broadcaster: default_authority\nAverage rate: 30.201\nBuffer length: 5.0\nMost recent transform: 1767757620.681971\nOldest transform: 1767757615.682152\n"];
+"camera_link" -> "camera_color_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_bottom_screw_frame" -> "camera_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_color_frame" -> "camera_color_optical_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_link" -> "camera_depth_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_depth_frame" -> "camera_depth_optical_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_link" -> "camera_infra1_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_infra1_frame" -> "camera_infra1_optical_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_link" -> "camera_infra2_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_infra2_frame" -> "camera_infra2_optical_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"hand_tool" -> "camera_bottom_screw_frame"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"camera_link" -> "camera_usb_plug_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"ag95_base_link" -> "grasp_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"left_finger" -> "left_finger_pad"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"left_outer_knuckle" -> "left_finger"[label=" Broadcaster: default_authority\nAverage rate: 15.203\nBuffer length: 4.933\nMost recent transform: 1767757620.629219\nOldest transform: 1767757615.695982\n"];
+"right_finger" -> "right_finger_pad"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"right_outer_knuckle" -> "right_finger"[label=" Broadcaster: default_authority\nAverage rate: 15.203\nBuffer length: 4.933\nMost recent transform: 1767757620.629219\nOldest transform: 1767757615.695982\n"];
+"table_link" -> "base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"table_link" -> "fence_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"base_link" -> "Link1"[label=" Broadcaster: default_authority\nAverage rate: 30.201\nBuffer length: 5.0\nMost recent transform: 1767757620.681971\nOldest transform: 1767757615.682152\n"];
+"Link1" -> "Link2"[label=" Broadcaster: default_authority\nAverage rate: 30.201\nBuffer length: 5.0\nMost recent transform: 1767757620.681971\nOldest transform: 1767757615.682152\n"];
+"Link2" -> "Link3"[label=" Broadcaster: default_authority\nAverage rate: 30.201\nBuffer length: 5.0\nMost recent transform: 1767757620.681971\nOldest transform: 1767757615.682152\n"];
+"Link3" -> "Link4"[label=" Broadcaster: default_authority\nAverage rate: 30.201\nBuffer length: 5.0\nMost recent transform: 1767757620.681971\nOldest transform: 1767757615.682152\n"];
+"Link4" -> "Link5"[label=" Broadcaster: default_authority\nAverage rate: 30.201\nBuffer length: 5.0\nMost recent transform: 1767757620.681971\nOldest transform: 1767757615.682152\n"];
+"ag95_body" -> "left_outer_knuckle"[label=" Broadcaster: default_authority\nAverage rate: 15.203\nBuffer length: 4.933\nMost recent transform: 1767757620.629219\nOldest transform: 1767757615.695982\n"];
+"ag95_body" -> "left_inner_knuckle"[label=" Broadcaster: default_authority\nAverage rate: 15.203\nBuffer length: 4.933\nMost recent transform: 1767757620.629219\nOldest transform: 1767757615.695982\n"];
+"ag95_body" -> "right_outer_knuckle"[label=" Broadcaster: default_authority\nAverage rate: 15.203\nBuffer length: 4.933\nMost recent transform: 1767757620.629219\nOldest transform: 1767757615.695982\n"];
+"ag95_body" -> "right_inner_knuckle"[label=" Broadcaster: default_authority\nAverage rate: 15.203\nBuffer length: 4.933\nMost recent transform: 1767757620.629219\nOldest transform: 1767757615.695982\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1767757620.6953192"[ shape=plaintext ] ;
+}->"table_link";
+}

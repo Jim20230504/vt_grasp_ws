@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<robot name="ts_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:include filename="common_properties.xacro" />
+    <xacro:include filename="table.xacro" />
+
+    <joint name="table_fence_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="table_link" />
+        <child link="fence_link" />    
+    </joint>
+    <xacro:include filename="fence.xacro" />
+
+    <joint name="table_arm_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="table_link" />
+        <child link="base_link" />    
+    </joint>
+    <xacro:include filename="arm.xacro" />
+
+    <joint name="arm_hand_tool_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="Link6" />
+        <child link="hand_tool" />    
+    </joint>
+    <xacro:include filename="hand_tool.xacro" />
+
+    <xacro:include filename="camera.xacro" />
+    
+
+    <joint name="hand_tool_gripper_base_joint" type="fixed">
+        <origin xyz="0 0 0.003" rpy="0 0 3.14159" />
+        <parent link="hand_tool" />
+        <child link="ag95_base_link" />    
+    </joint>
+    <xacro:include filename="gripper.xacro" /> 
+    
+</robot>

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="use_nominal_extrinsics" default="true"/>
+  <xacro:arg name="add_plug" default="true" />
+  <xacro:arg name="use_mesh" default="true" />
+  <xacro:include filename="$(find ts_robot_description)/urdf/camera/_d435.urdf.xacro" />  
+  <xacro:sensor_d435 parent="hand_tool" use_nominal_extrinsics="$(arg use_nominal_extrinsics)" add_plug="$(arg add_plug)" use_mesh="$(arg use_mesh)">
+    <origin xyz="0 0.0725 0.01315" rpy="-1.57079 -1.57079 0"/>
+  </xacro:sensor_d435>
+</robot>

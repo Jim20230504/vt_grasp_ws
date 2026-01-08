@@ -1,0 +1,294 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <link name="ag95_base_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="7.892486664218268e-13 9.73814800116557e-05 0.0030311891257515876"/>
+      <mass value="0.05335674905975589"/>
+      <inertia ixx="1.1649107960000001e-05" ixy="0.0" ixz="-0.0" iyy="3.5238551579e-05" iyz="0.0" izz="4.6013976442e-05"/>
+    </inertial>   
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/base_link.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="grey"/>        
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/base_link.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- main body of gripper -->
+  <link name="ag95_body">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.040363309423792425 0.014263796342398428 0.04377145101823153"/>
+      <mass value="0.7808032509181286"/>
+      <inertia ixx="0.001123265235043" ixy="-8.736830970000001e-07" ixz="-2.621049291e-06" iyy="0.001299749220637" iyz="-5.82455398e-07" izz="0.00045489766583800003"/>
+    </inertial>    
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0405 0.0143 -0.0147"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/gripper_body.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0.0405 0.0143 -0.0147"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/gripper_body.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="ag95_body_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="-0.0405 -0.0143 0.0147"/>
+    <parent link="ag95_base_link"/>
+    <child link="ag95_body"/>
+  </joint>
+
+  <link name="grasp_link"/>
+
+  <joint name="grasp_joint" type="fixed">
+    <parent link="ag95_base_link"/>
+    <child link="grasp_link"/>
+    <origin rpy="1.5707963267948966 -1.5707963267948966 0" xyz="0.0 0.0 0.21"/>
+  </joint>
+
+  <link name="left_outer_knuckle">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.027678515816713697 0.008750002359538555 -4.432690447753185e-07"/>
+      <mass value="0.0589066057773107"/>
+      <inertia ixx="1e-06" ixy="0.0" ixz="-0.0" iyy="1.7e-05" iyz="0.0" izz="1.7e-05"/>
+    </inertial>    
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.036673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/outer_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="black"/>        
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="-0.036673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/outer_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_inner_knuckle">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.001773347637755853 0.025399999999162655 0.028950024725163018"/>
+      <mass value="0.07116672022913799"/>
+      <inertia ixx="3.7e-05" ixy="0.0" ixz="0.0" iyy="1.7e-05" iyz="-0.0" izz="2.1e-05"/>
+    </inertial>    
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.016 0.0254 -0.10586"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/inner_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="black"/>    
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="-0.016 0.0254 -0.10586"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/inner_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_finger">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.013763205176003518 0.008750002316393751 0.007315452388518454"/>
+      <mass value="0.035304126564626004"/>
+      <inertia ixx="2e-06" ixy="0.0" ixz="1e-06" iyy="4e-06" iyz="-0.0" izz="3e-06"/>
+    </inertial>    
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.091673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/finger.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="dark_grey" />      
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="-0.091673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/finger.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_finger_pad">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.0022695421476374017 2.3166990085415594e-09 0.00779073905191241"/>
+      <mass value="0.047823655444711066"/>
+      <inertia ixx="5e-06" ixy="-0.0" ixz="0.0" iyy="4e-06" iyz="0.0" izz="2e-06"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/finger_pad.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/finger_pad.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="left_finger_joint" type="revolute">
+    <origin rpy="0 0.7800050960087859 0" xyz="0.055 0.0 0.0"/>
+    <parent link="left_outer_knuckle"/>
+    <child link="left_finger"/>
+    <axis xyz="0.0 1.0 -0.0"/>
+    <limit effort="50.0" lower="-0.01" upper="0.9400000000000001" velocity="2.1"/>
+    <mimic joint="left_outer_knuckle_joint" multiplier="1" offset="0"/>
+  </joint>
+
+  <joint name="left_inner_knuckle_joint" type="revolute">
+    <origin rpy="0 0.7907912307861107 0.0" xyz="0.0565 -0.0111 0.09116"/>
+    <parent link="ag95_body"/>
+    <child link="left_inner_knuckle"/>
+    <axis xyz="0.0 -1.0 -0.0"/>
+    <limit effort="50.0" lower="-0.01" upper="0.9400000000000001" velocity="2.1"/>
+    <mimic joint="left_outer_knuckle_joint" multiplier="1" offset="0"/>
+  </joint>  
+  
+  <joint name="left_inner_finger_pad_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="-0.021173 0.00875 0.022224"/>
+    <parent link="left_finger"/>
+    <child link="left_finger_pad"/>
+  </joint>
+
+  <joint name="left_outer_knuckle_joint" type="revolute">
+    <origin rpy="0 -0.7800050960087859 0" xyz="0.077173 0.00555 0.083636"/>
+    <parent link="ag95_body"/>
+    <child link="left_outer_knuckle"/>
+    <axis xyz="-0.0 -1.0 0.0"/>
+    <limit effort="50.0" lower="0.0" upper="0.93" velocity="2.1"/>
+  </joint>
+
+  <joint name="right_finger_joint" type="revolute">
+    <origin rpy="0 0.7800050960087859 0" xyz="0.055 0.0 0.0"/>
+    <parent link="right_outer_knuckle"/>
+    <child link="right_finger"/>
+    <axis xyz="0.0 1.0 -0.0"/>
+    <limit effort="50.0" lower="-0.01" upper="0.9400000000000001" velocity="2.1"/>
+    <mimic joint="left_outer_knuckle_joint" multiplier="1" offset="0"/>
+  </joint>
+
+  <joint name="right_inner_knuckle_joint" type="revolute">
+    <origin rpy="0 0.7907912307861107 -3.141592653589793" xyz="0.0245 0.0397 0.09116"/>
+    <parent link="ag95_body"/>
+    <child link="right_inner_knuckle"/>
+    <axis xyz="0.0 -1.0 -0.0"/>
+    <limit effort="50.0" lower="-0.01" upper="0.9400000000000001" velocity="2.1"/>
+    <mimic joint="left_outer_knuckle_joint" multiplier="1" offset="0"/>
+  </joint>
+  
+  <joint name="right_inner_finger_pad_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="-0.021173 0.00875 0.022224"/>
+    <parent link="right_finger"/>
+    <child link="right_finger_pad"/>
+  </joint>
+
+  <link name="right_outer_knuckle">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.027678515816713697 0.008750002359538555 -4.432690447753185e-07"/>
+      <mass value="0.0589066057773107"/>
+      <inertia ixx="1e-06" ixy="0.0" ixz="-0.0" iyy="1.7e-05" iyz="0.0" izz="1.7e-05"/>
+    </inertial>    
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.036673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/outer_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+     <material name="black"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="-0.036673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/outer_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_inner_knuckle">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.001773347637755853 0.025399999999162655 0.028950024725163018"/>
+      <mass value="0.07116672022913799"/>
+      <inertia ixx="3.7e-05" ixy="0.0" ixz="0.0" iyy="1.7e-05" iyz="-0.0" izz="2.1e-05"/>
+    </inertial>    
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.016 0.0254 -0.10586"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/inner_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="-0.016 0.0254 -0.10586"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/inner_knuckle.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_finger">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.013763205176003518 0.008750002316393751 0.007315452388518454"/>
+      <mass value="0.035304126564626004"/>
+      <inertia ixx="2e-06" ixy="0.0" ixz="1e-06" iyy="4e-06" iyz="-0.0" izz="3e-06"/>
+    </inertial>    
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.091673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/finger.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="dark_grey"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="-0.091673 0.00875 -0.098336"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/finger.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_finger_pad">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.0022695421476374017 2.3166990085415594e-09 0.00779073905191241"/>
+      <mass value="0.047823655444711066"/>
+      <inertia ixx="5e-06" ixy="-0.0" ixz="0.0" iyy="4e-06" iyz="0.0" izz="2e-06"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/visual/finger_pad.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <geometry>
+        <mesh filename="package://ts_robot_description/mesh/gripper/collision/finger_pad.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="right_outer_knuckle_joint" type="revolute">
+    <origin rpy="0 -0.7800050960087859 3.141592653589793" xyz="0.003827000000000011 0.02305 0.083636"/>
+    <parent link="ag95_body"/>
+    <child link="right_outer_knuckle"/>
+    <axis xyz="-0.0 -1.0 0.0"/>
+    <limit effort="50.0" lower="-0.01" upper="0.9400000000000001" velocity="2.1"/>
+    <mimic joint="left_outer_knuckle_joint" multiplier="1" offset="0"/>
+  </joint>
+  
+</robot>

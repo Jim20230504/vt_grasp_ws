@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link name="hand_tool">
+    <inertial>
+        <origin
+          xyz="0 0 0"
+          rpy="0 0 0" />
+        <mass
+          value="0.02" />
+        <inertia
+          ixx="2.02766547502765E-09"
+          ixy="-1.32505200276849E-09"
+          ixz="-2.5845091522508E-09"
+          iyy="1.87986725225022E-09"
+          iyz="3.39471452125439E-09"
+          izz="3.17885459163081E-09" />
+      </inertial>    
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://ts_robot_description/mesh/hand_tool/visual/hand_tool.stl" scale = "0.001 0.001 0.001" />
+        </geometry>
+        <material name="dark_grey"/>       
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://ts_robot_description/mesh/hand_tool/collision/hand_tool.stl" scale = "0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+  </link>
+</robot>
+
+  

@@ -44,12 +44,12 @@ class PerceptionModule:
         except Exception as e:
             self.node.get_logger().error(f"YOLO Load Failed: {e}")
             
-        # 订阅
-        # 假设 visual_tactile_grasping.utils 存在，如果不存在请修改这里的 topic 字符串
+        # 订阅话题配置
+        # 优先尝试从 utils 导入配置
         try:
             from visual_tactile_grasping.utils import TOPIC_COLOR, TOPIC_DEPTH, TOPIC_INFO
         except ImportError:
-            # 默认 fallback
+            # [适配] RealSense 默认话题
             TOPIC_COLOR = '/camera/color/image_raw'
             TOPIC_DEPTH = '/camera/aligned_depth_to_color/image_raw'
             TOPIC_INFO = '/camera/color/camera_info'
@@ -58,39 +58,53 @@ class PerceptionModule:
         self.sub_color = node.create_subscription(Image, TOPIC_COLOR, self.color_callback, qos_profile_sensor_data)
         self.sub_depth = node.create_subscription(Image, TOPIC_DEPTH, self.depth_callback, qos_profile_sensor_data)
         
-        # TF
+        # TF 监听器 (用于查询手眼变换)
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, node)
 
         # 调试图像发布器
         self.debug_pub = node.create_publisher(Image, '/yolo/debug_image', 10)
-        # [新增] 用于在 RViz 中显示目标点的 3D 球体
+        
+        # Marker 发布器 (用于 RViz 可视化 目标箭头)
         self.marker_pub = node.create_publisher(Marker, '/yolo/target_marker', 10)
-    def publish_marker(self, x, y, z):
-        """在 RViz 中发布一个红色的球，代表目标位置"""
+
+    def publish_marker(self, x, y, z, qx=0.0, qy=0.0, qz=0.0, qw=1.0):
+        """
+        在 RViz 中发布一个箭头，代表目标位置和抓取方向
+        """
         marker = Marker()
-        marker.header.frame_id = "base_link" # 确保这是你的机械臂基座 Frame
+        # 画在 base_link 下，因为传入的坐标已经转换到了 base_link
+        marker.header.frame_id = "base_link" 
         marker.header.stamp = self.node.get_clock().now().to_msg()
-        marker.ns = "object_location"
+        marker.ns = "grasp_target"
         marker.id = 0
-        marker.type = Marker.SPHERE
+        marker.type = Marker.ARROW # 使用箭头显示方向
         marker.action = Marker.ADD
         
+        # 位置
         marker.pose.position.x = x
         marker.pose.position.y = y
         marker.pose.position.z = z
-        marker.pose.orientation.w = 1.0 # 球体方向不重要
         
-        marker.scale.x = 0.05 # 直径 5cm
-        marker.scale.y = 0.05
-        marker.scale.z = 0.05
+        # 方向 (四元数)
+        marker.pose.orientation.x = qx
+        marker.pose.orientation.y = qy
+        marker.pose.orientation.z = qz
+        marker.pose.orientation.w = qw
         
-        marker.color.a = 1.0 # 不透明
-        marker.color.r = 1.0 # 红色
+        # 尺寸
+        marker.scale.x = 0.10 # 箭头长度 10cm
+        marker.scale.y = 0.01 # 粗细
+        marker.scale.z = 0.01 
+        
+        # 颜色 (红色)
+        marker.color.a = 1.0 
+        marker.color.r = 1.0 
         marker.color.g = 0.0
         marker.color.b = 0.0
         
         self.marker_pub.publish(marker)
+
     def info_callback(self, msg):
         if self.camera_info is None:
             self.camera_info = msg
@@ -108,7 +122,7 @@ class PerceptionModule:
 
     def _calculate_orientation(self, image, bbox):
         """
-        在 YOLO 的检测框内计算物体的主轴角度
+        在 YOLO 的检测框内计算物体的主轴角度 (PCA / MinAreaRect)
         """
         x1, y1, x2, y2 = bbox
         
@@ -126,7 +140,7 @@ class PerceptionModule:
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # Otsu 阈值
+        # Otsu 阈值分割
         _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -135,130 +149,73 @@ class PerceptionModule:
         c = max(contours, key=cv2.contourArea)
         if cv2.contourArea(c) < 50: return 0.0 
         
+        # 计算最小外接矩形
         rect = cv2.minAreaRect(c) 
         center, size, angle_deg = rect
         width, height = size
         
+        # 修正角度：使角度对应长边方向
         if width < height:
             angle_deg = 90 + angle_deg
         
         angle_rad = math.radians(angle_deg)
         return angle_rad
 
-    # def detect_object(self):
-    #     """
-    #     YOLOv5 检测 + 角度计算
-    #     :return: (found, u, v, angle_rad)
-    #     """
-    #     # 1. 安全检查
-    #     if self.latest_color_img is None:
-    #         self.node.get_logger().warn("No image available for detection.")
-    #         return False, 0, 0, 0.0
-
-    #     detections = [] # 初始化，防止报错
-
-    #     try:
-    #         # 2. YOLO 推理
-    #         results = self.model(self.latest_color_img)
-            
-    #         # 3. 【关键修复】先获取数据，不论后面画图是否成功
-    #         detections = results.xyxy[0].cpu().numpy()
-
-    #         # 4. 尝试发布可视化 (放在 try 块中，即使失败也不影响主逻辑)
-    #         annotated_img = results.render()[0]
-    #         ros_img = self.bridge.cv2_to_imgmsg(annotated_img, encoding="rgb8")
-    #         ros_img.header.frame_id = "calibrated_optical_frame"
-    #         ros_img.header.stamp = self.node.get_clock().now().to_msg()
-    #         self.debug_pub.publish(ros_img)
-            
-    #     except Exception as e:
-    #         # 这里的异常只记录警告，不应打断流程
-    #         self.node.get_logger().warn(f"Detection or visualization warning: {e}")
-
-    #     # 5. 逻辑判断
-    #     if len(detections) == 0:
-    #         return False, 0, 0, 0.0
-        
-    #     # 取置信度最高的
-    #     best_det = detections[np.argmax(detections[:, 4])]
-    #     x1, y1, x2, y2, conf, cls_id = best_det
-        
-    #     cx = int((x1 + x2) / 2)
-    #     cy = int((y1 + y2) / 2)
-        
-    #     bbox = [int(x1), int(y1), int(x2), int(y2)]
-    #     angle = self._calculate_orientation(self.latest_color_img, bbox)
-        
-    #     name = self.model.names[int(cls_id)]
-    #     self.node.get_logger().info(f"Found {name} at ({cx}, {cy}), Angle: {math.degrees(angle):.1f}°")
-        
-    #     return True, cx, cy, angle
     def detect_object(self):
         """
-        YOLOv5 检测 + 角度计算 + 【新增】类别过滤
+        YOLOv5 检测 + 角度计算 + 类别过滤
         :return: (found, u, v, angle_rad)
         """
         # 1. 安全检查
         if self.latest_color_img is None:
-            self.node.get_logger().warn("No image available for detection.")
+            self.node.get_logger().warn("No image available for detection.", throttle_duration_sec=2.0)
             return False, 0, 0, 0.0
 
-        detections = [] # 初始化
+        detections = [] 
 
         try:
             # 2. YOLO 推理
             results = self.model(self.latest_color_img)
-            
-            # 3. 获取数据
             detections = results.xyxy[0].cpu().numpy()
 
-            # 4. 发布可视化 (即使失败也不影响逻辑)
+            # 3. 发布可视化 (使用新的标准光心坐标系名称)
             annotated_img = results.render()[0]
             ros_img = self.bridge.cv2_to_imgmsg(annotated_img, encoding="rgb8")
-            ros_img.header.frame_id = "calibrated_optical_frame"
+            ros_img.header.frame_id = "camera_color_optical_frame" # 仅用于显示
             ros_img.header.stamp = self.node.get_clock().now().to_msg()
             self.debug_pub.publish(ros_img)
             
         except Exception as e:
             self.node.get_logger().warn(f"Detection or visualization warning: {e}")
 
-        # 5. 逻辑判断
+        # 4. 逻辑判断
         if len(detections) == 0:
             return False, 0, 0, 0.0
         
-        # =================【修改开始：类别过滤逻辑】=================
-        
-        # 定义你想抓取的物体列表 (白名单)
-        # 注意：名字必须和 YOLOv5 的 COCO 类别名完全一致 (如 'mouse', 'cup', 'bottle' 等)
-        # 如果你想抓所有东西，就把下面的过滤逻辑去掉，改回原来的写法
+        # ================= 类别过滤逻辑 =================
+        # 只抓取列表中的物体
         TARGET_CLASSES = ['mouse', 'cup', 'bottle', 'apple', 'orange', 'cell phone']
         
         best_det = None
-        max_conf = -1.0 # 初始化最大置信度
+        max_conf = -1.0 
         
-        # 遍历所有检测到的物体
         for det in detections:
             x1, y1, x2, y2, conf, cls_id = det
-            
-            # 获取当前物体的名字
             class_name = self.model.names[int(cls_id)]
             
-            # 筛选条件 1: 这个物体是否在我们的目标清单里？
             if class_name in TARGET_CLASSES:
-                # 筛选条件 2: 如果有多个目标，取置信度最高的那个
                 if conf > max_conf:
                     max_conf = conf
                     best_det = det
         
-        # 如果遍历完一圈，发现虽然有检测到东西（比如人、笔记本），但没有我们要的（鼠标、杯子）
         if best_det is None:
-            # 可以在这里打印日志调试
-            # self.node.get_logger().info(f"Ignored non-target objects.")
+            # 这里的 info 可以注释掉防止刷屏
+            # self.node.get_logger().info(f"Objects detected but none in target list.")
             return False, 0, 0, 0.0
             
-        # =================【修改结束】=================
+        # ===============================================
         
-        # 6. 解析最佳目标 (使用 best_det)
+        # 5. 解析最佳目标
         x1, y1, x2, y2, conf, cls_id = best_det
         
         cx = int((x1 + x2) / 2)
@@ -276,46 +233,75 @@ class PerceptionModule:
 
     def get_object_pose_base_frame(self, u, v, angle_rad):
         """
-        获取带角度的 6D 姿态
+        获取带角度的 6D 姿态 (Position + Orientation)
+        核心逻辑：Target_Quat = Q_grasp_vertical * Q_rotation_z
         """
+        # 1. 获取位置 XYZ
         pos = self._get_xyz(u, v) 
         if not pos: return None
         bx, by, bz = pos
         
-        # 假设机械臂 Base Z 向上，End-Effector Z 垂直向下抓取
-        # Roll=180 (翻转Z轴), Pitch=0, Yaw=angle_rad (抓取旋转)
-        q = tf_transformations.quaternion_from_euler(math.pi, 0, angle_rad)
+        # 2. 计算姿态
         
-        return (bx, by, bz, q[0], q[1], q[2], q[3])
+        # 【关键更新：基准垂直姿态】
+        # 因为你的 SRDF 末端现在是 'grasp_link' (指尖)，
+        # 所以这里的四元数应该是：当夹爪垂直向下时，'grasp_link' 相对于 'base_link' 的旋转。
+        #
+        # 调试方法：
+        # 1. 手动把机械臂移动到夹爪垂直向下的姿态。
+        # 2. 终端运行: ros2 run tf2_ros tf2_echo base_link grasp_link
+        # 3. 把显示的 Rotation (x,y,z,w) 填入下面：
+        
+        # 默认值 [1, 0, 0, 0] 是绕 X 轴转 180 度。
+        # 如果你的夹爪定义是 Z 轴朝前，那么这个默认值通常是正确的 (让 Z 轴朝下)。
+        q_base_vertical = [1.0, 0.0, 0.0, 0.0] 
+        
+        # 【叠加旋转】
+        # 计算 YOLO 带来的 Z 轴旋转 (物体在桌面上的旋转)
+        q_rot_z = tf_transformations.quaternion_from_euler(0, 0, angle_rad)
+        
+        # 叠加：在垂直姿态的基础上，绕 Z 轴旋转
+        q_final = tf_transformations.quaternion_multiply(q_base_vertical, q_rot_z)
+        
+        # 标准化
+        norm = np.linalg.norm(q_final)
+        q_final = q_final / norm
+        
+        return (bx, by, bz, q_final[0], q_final[1], q_final[2], q_final[3])
 
     def _get_xyz(self, u, v):
+        """
+        查询 TF 树，将像素点 (u,v) 转换为 base_link 下的 (x,y,z)
+        """
         if self.latest_depth_img is None or self.camera_info is None: return None
         h, w = self.latest_depth_img.shape
         if not (0 <= u < w and 0 <= v < h): return None
         
+        # 获取深度 (中值滤波去噪)
         d_raw = self.latest_depth_img[v-1:v+2, u-1:u+2]
         if d_raw.size == 0: return None
         d_valid = d_raw[d_raw > 0]
         if d_valid.size == 0: return None
         depth_m = np.median(d_valid) * 0.001
         
+        # 像素 -> 相机坐标系 (3D射线)
         ray = self.camera_model.projectPixelTo3dRay((u, v))
         pt_cam = np.array(ray) * depth_m
         
+        # 构建点消息
         ps = PointStamped()
-        # 注意：这里如果 camera_info 的 frame_id 和你的 TF tree 不一致，需要手动指定
-        # 如果你的相机发布的是 'camera_color_optical_frame' 但你用 'calibrated_...' 
-        # 请确保它们之间有 TF 连接
-        ps.header.frame_id = 'calibrated_optical_frame' 
+        # 【关键修改】使用 RealSense 驱动 + URDF 配合后的标准光心名称
+        ps.header.frame_id = 'camera_color_optical_frame' 
         ps.header.stamp = self.node.get_clock().now().to_msg()
         ps.point.x, ps.point.y, ps.point.z = pt_cam[0], pt_cam[1], pt_cam[2]
         
         try:
-            # 增加 timeout 到 1.0s 提高成功率
+            # 查询 TF 变换 (光心 -> 机械臂基座)
+            # 这一步会自动利用 robot_state_publisher 发布的实时链条
             trans = self.tf_buffer.lookup_transform(
                 'base_link', 
                 ps.header.frame_id, 
-                rclpy.time.Time(), # 使用最新变换
+                rclpy.time.Time(), # 获取最新变换
                 timeout=rclpy.duration.Duration(seconds=1.0)
             )
             pt_base = tf2_geometry_msgs.do_transform_point(ps, trans)
