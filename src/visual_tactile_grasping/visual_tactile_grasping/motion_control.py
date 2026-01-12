@@ -72,7 +72,7 @@ class MotionControl:
         """
         goal = MoveGroup.Goal()
         goal.request.group_name = self.group_name
-        goal.request.allowed_planning_time = 5.0
+        goal.request.allowed_planning_time = 2.0
         goal.request.max_velocity_scaling_factor = 0.1 # 速度适中
         goal.request.max_acceleration_scaling_factor = 0.1
         
