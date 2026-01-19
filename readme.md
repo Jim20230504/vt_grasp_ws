@@ -36,3 +36,6 @@ ros2 run tf2_ros tf2_monitor
 
 # 生成 TF 树可视化文件：
 ros2 run tf2_tools view_frames
+
+# 抓取姿态
+ros2 run tf2_ros tf2_echo base_link grasp_link

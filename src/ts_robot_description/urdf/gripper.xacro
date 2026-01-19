@@ -55,7 +55,9 @@
   <joint name="grasp_joint" type="fixed">
     <parent link="ag95_base_link"/>
     <child link="grasp_link"/>
-    <origin rpy="1.5707963267948966 -1.5707963267948966 0" xyz="0.0 0.0 0.21"/>
+    <!-- <origin rpy="1.5707963267948966 -1.5707963267948966 0" xyz="0.0 0.0 0.21"/> -->
+
+    <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.21"/>
   </joint>
 
   <link name="left_outer_knuckle">

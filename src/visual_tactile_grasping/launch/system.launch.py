@@ -9,9 +9,8 @@ from launch.substitutions import PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution  # <--- 检查这个
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 
-  # <--- 还有这个
 
 def generate_launch_description():
     
@@ -20,7 +19,7 @@ def generate_launch_description():
     # ==========================================
 
     # [A] 睿尔曼机械臂 (RM65) - 使用修改后的 Bringup
-    # 注意：前提是你已经修改了 rm_65_bringup.launch.py 
+    # 注意：已经修改了 rm_65_bringup.launch.py 
     # 让它加载 'ts_robot_description' 包里的 'ts_robot.urdf.xacro'
     # 这样它就会发布包含 [机械臂+夹爪+相机] 的完整 TF 树。
     rm_bringup_launch = IncludeLaunchDescription(
@@ -62,7 +61,7 @@ def generate_launch_description():
         ])
     )
     # 找到 MoveIt 的 RViz 配置文件
-    # 假设你的配置文件在 rm_65_moveit_config/config/moveit.rviz
+    # 配置文件在 rm_65_moveit_config/config/moveit.rviz
     rviz_config_file = PathJoinSubstitution(
         [FindPackageShare("rm_65_config"), "config", "moveit.rviz"]
     )
