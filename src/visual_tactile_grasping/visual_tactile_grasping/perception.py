@@ -71,6 +71,14 @@ class PerceptionModule:
         pos = self._get_xyz(u, v) 
         if not pos: return None
         bx, by, bz = pos
+
+        OFFSET_X = -0.01  # 向前补偿
+        OFFSET_Y = 0.00  # 左右补偿
+        OFFSET_Z = -0.01  # 高度补偿
+        
+        bx += OFFSET_X
+        by += OFFSET_Y
+        bz += OFFSET_Z
         
         # 使用 numpy 向量运算构建旋转矩阵
         
@@ -244,4 +252,4 @@ class PerceptionModule:
             trans = self.tf_buffer.lookup_transform('base_link', ps.header.frame_id, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=1.0))
             pt = tf2_geometry_msgs.do_transform_point(ps, trans)
             return [pt.point.x, pt.point.y, pt.point.z]
-        except: return None
+        except: return None0

@@ -19,7 +19,6 @@ def generate_launch_description():
     # ==========================================
 
     # [A] 睿尔曼机械臂 (RM65) - 使用修改后的 Bringup
-    # 注意：已经修改了 rm_65_bringup.launch.py 
     # 让它加载 'ts_robot_description' 包里的 'ts_robot.urdf.xacro'
     # 这样它就会发布包含 [机械臂+夹爪+相机] 的完整 TF 树。
     rm_bringup_launch = IncludeLaunchDescription(
@@ -51,7 +50,7 @@ def generate_launch_description():
         executable='dh_gripper_driver',
         name='dh_gripper_driver',
         output='screen',
-        parameters=[{'port': '/dev/ttyUSB0'}] # 请确认端口
+        parameters=[{'port': '/dev/ttyUSB0'}] 
     )
 
     # [D] 触觉传感器驱动
