@@ -95,10 +95,12 @@ class MotionControl:
         """
         goal = MoveGroup.Goal()
         goal.request.group_name = self.group_name
-        goal.request.allowed_planning_time = 2.0
+        goal.request.allowed_planning_time = 5.0
         goal.request.max_velocity_scaling_factor = 0.1
         goal.request.max_acceleration_scaling_factor = 0.1
         goal.request.num_planning_attempts = 10
+
+        # goal.planning_options.planner_id = "RRTConnectkConfigDefault"
         
         # 目标约束
         c = Constraints()
@@ -112,7 +114,7 @@ class MotionControl:
         bv = BoundingVolume()
         pr = SolidPrimitive()
         pr.type = SolidPrimitive.SPHERE
-        pr.dimensions = [0.005] 
+        pr.dimensions = [0.02] 
         bv.primitives.append(pr)
         p_target = Pose()
         p_target.position.x, p_target.position.y, p_target.position.z = x, y, z
@@ -126,8 +128,8 @@ class MotionControl:
         oc.header.frame_id = "base_link"
         oc.link_name = "grasp_link"
         oc.orientation = Quaternion(x=qx, y=qy, z=qz, w=qw)
-        oc.absolute_x_axis_tolerance = 0.1
-        oc.absolute_y_axis_tolerance = 0.1
+        oc.absolute_x_axis_tolerance = 0.2
+        oc.absolute_y_axis_tolerance = 0.2
         oc.absolute_z_axis_tolerance = 3.14 
         oc.weight = 1.0
         c.orientation_constraints.append(oc)

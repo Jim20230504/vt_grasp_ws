@@ -72,9 +72,9 @@ class PerceptionModule:
         if not pos: return None
         bx, by, bz = pos
 
-        OFFSET_X = -0.01  # 向前补偿
+        OFFSET_X = 0.01  # 向前补偿
         OFFSET_Y = 0.00  # 左右补偿
-        OFFSET_Z = -0.01  # 高度补偿
+        OFFSET_Z = 0.00  # 高度补偿
         
         bx += OFFSET_X
         by += OFFSET_Y

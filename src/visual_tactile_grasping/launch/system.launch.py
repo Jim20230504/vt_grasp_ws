@@ -50,7 +50,7 @@ def generate_launch_description():
         executable='dh_gripper_driver',
         name='dh_gripper_driver',
         output='screen',
-        parameters=[{'port': '/dev/ttyUSB0'}] 
+        parameters=[{'port': '/dev/ttyUSB1'}] 
     )
 
     # [D] 触觉传感器驱动

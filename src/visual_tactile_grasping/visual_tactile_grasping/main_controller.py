@@ -110,6 +110,7 @@ class VisualTactileController(Node):
                 if pose_7d:
                     self.target_pose_list = list(pose_7d)
                     tx, ty, tz, qx, qy, qz, qw = self.target_pose_list
+                    self.get_logger().info(f"Target Pose: X={tx:.3f}, Y={ty:.3f}, Z={tz:.3f}")
                     
                     self.get_logger().info(f"Target: {strategy} Grasp at Z={tz:.3f}")
                     self.perception.publish_marker(tx, ty, tz, qx, qy, qz, qw)
