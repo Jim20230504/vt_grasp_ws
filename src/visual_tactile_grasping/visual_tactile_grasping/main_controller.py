@@ -29,11 +29,10 @@ class VisualTactileController(Node):
         self.target_pose_list = None 
         self.current_strategy = "TOP"
         self.wait_time = 0
-        self.sub_step = 0 # 用于管理异步操作的微步骤 (0:发送, 1:等Handle, 2:等Result)
+        self.sub_step = 0 # 用于管理异步操作的微步骤
         
         # 异步句柄
         self.async_future = None
-        self.async_goal_handle = None
         self.computed_trajectory = None
 
         # 主循环 (10Hz)
@@ -52,7 +51,7 @@ class VisualTactileController(Node):
                 if self.gripper.state != GState.INIT:
                     self.get_logger().info("System Ready.")
                     self.state = SystemState.MOVING_TO_OBSERVE
-                    self.sub_step = 0 # 重置微步骤
+                    self.sub_step = 0
 
         # ---------------------------------------------------------------------
         # 2. 移动到观察点 (Async Action)
@@ -62,33 +61,42 @@ class VisualTactileController(Node):
             if self.sub_step == 0:
                 self.get_logger().info("Moving to Observation Pose...")
                 self.async_future = self.motion.move_to_joint_pose(OBSERVATION_JOINT_POSE)
-                self.sub_step = 1 # 进入等待 Goal Accepted 阶段
+                self.sub_step = 1
             
-            # [Step 1] 等待 Goal 被接受
+            # [Step 1] 等待 Goal Accepted
             elif self.sub_step == 1:
                 if self.async_future.done():
                     goal_handle = self.async_future.result()
                     if not goal_handle.accepted:
                         self.get_logger().error("Move Rejected!")
-                        self.sub_step = 0 # 重试
+                        self.sub_step = 0
                         return
-                    # 获取结果 Future
                     self.async_future = goal_handle.get_result_async()
-                    self.sub_step = 2 # 进入等待执行结果阶段
+                    self.sub_step = 2
 
             # [Step 2] 等待执行完成
             elif self.sub_step == 2:
                 if self.async_future.done():
                     result = self.async_future.result().result
                     if result.error_code.val == 1: # SUCCESS
-                        self.get_logger().info("Arrived. Opening Gripper...")
+                        self.get_logger().info("Arrived at Observation Pose. Clearing stale cache...")
+                        
+                        # 🔥🔥🔥 关键修复：手动清除感知的缓存
+                        # 确保下一次 detect_object() 用的是新位置拍到的新图
+                        if hasattr(self.perception, 'latest_header'):
+                            self.perception.latest_color_img = None
+                            self.perception.latest_depth_img = None
+                            self.perception.latest_header = None
+                        
                         self.gripper.state = GState.OPEN
                         self.gripper.tick()
-                        self.wait_time = 15 # 给一点时间稳定画面
+                        
+                        # 等待相机曝光稳定 (2秒 = 20 ticks)
+                        self.wait_time = 20 
                         self.state = SystemState.DETECTING_WAIT
                     else:
-                        self.get_logger().error(f"Move Failed: {result.error_code.val}")
-                        self.state = SystemState.INITIALIZING # 出错复位
+                        self.get_logger().error("Move Failed!")
+                        self.state = SystemState.INITIALIZING
 
         # ---------------------------------------------------------------------
         # 2.5 等待检测 (防抖)
@@ -105,17 +113,22 @@ class VisualTactileController(Node):
             
             if found:
                 self.current_strategy = strategy
-                pose_7d = self.perception.get_object_pose_base_frame(u, v, angle, strategy)
+                
+                # 🔥 关键修改：调用新的 get_pose_compatible
+                # 这样它会自动使用内部存储的 bbox 进行高精度点云运算
+                pose_7d = self.perception.get_pose_compatible(u, v, angle, strategy)
                 
                 if pose_7d:
                     self.target_pose_list = list(pose_7d)
                     tx, ty, tz, qx, qy, qz, qw = self.target_pose_list
-                    self.get_logger().info(f"Target Pose: X={tx:.3f}, Y={ty:.3f}, Z={tz:.3f}")
                     
+                    # 打印坐标方便调试
+                    self.get_logger().info(f"Target Pose: X={tx:.3f}, Y={ty:.3f}, Z={tz:.3f}")
                     self.get_logger().info(f"Target: {strategy} Grasp at Z={tz:.3f}")
+                    
                     self.perception.publish_marker(tx, ty, tz, qx, qy, qz, qw)
                     
-                    self.sub_step = 0 # 准备进入下一阶段
+                    self.sub_step = 0 
                     self.state = SystemState.PLANNING_APPROACH
 
         # ---------------------------------------------------------------------
@@ -126,13 +139,13 @@ class VisualTactileController(Node):
             
             # [Step 0] 计算并发送请求
             if self.sub_step == 0:
-                target_x, target_y, target_z = tx, ty, tz + 0.15 # 默认 Top
+                # 🌟 调整预备点高度：如果是乒乓球，预备点最好不要太高，防止视觉误差放大
+                # 但为了避障，保持 20cm 比较安全
+                target_x, target_y, target_z = tx, ty, tz + 0.20 
                 
                 if self.current_strategy == "SIDE":
-                    # 侧抓：修正高度到腰部，修正位置到前方
                     side_grasp_z = max(tz, 0.05)
-                    self.target_pose_list[2] = side_grasp_z # 更新 Z
-                    
+                    self.target_pose_list[2] = side_grasp_z
                     dist = math.sqrt(tx**2 + ty**2)
                     ratio = (dist - 0.15) / dist if dist > 0.15 else 1.0
                     target_x, target_y, target_z = tx * ratio, ty * ratio, side_grasp_z
@@ -174,33 +187,36 @@ class VisualTactileController(Node):
             tx, ty, _, qx, qy, qz, qw = self.target_pose_list
             final_z = self.target_pose_list[2]
             
-            # [Step 0] 发起直线路径计算 (Service Call)
+            # [Step 0] 发起直线路径计算
             if self.sub_step == 0:
                 current_pose = self.motion.get_current_pose()
-                if not current_pose: return # 等TF
+                if not current_pose: return
                 
                 grasp_pose = Pose()
-                grasp_pose.orientation = current_pose.orientation # 锁姿态
+                grasp_pose.orientation = current_pose.orientation # 🔒 锁死当前姿态（垂直向下）
                 
+                # 🌟 关键：如果是 Top 抓取，目标高度要精准
+                # final_z 已经在 perception 里做过补偿了 (减去了球半径)
                 if self.current_strategy == "TOP":
-                    grasp_pose.position.x, grasp_pose.position.y, grasp_pose.position.z = tx, ty, final_z - 0.005
+                    grasp_pose.position.x = tx
+                    grasp_pose.position.y = ty
+                    grasp_pose.position.z = final_z 
                 else:
-                    grasp_pose.position.x, grasp_pose.position.y, grasp_pose.position.z = tx, ty, final_z
+                    grasp_pose.position.x = tx
+                    grasp_pose.position.y = ty
+                    grasp_pose.position.z = final_z
                 
-                # 异步调用 Service
                 self.async_future = self.motion.compute_linear_path_async(grasp_pose)
                 self.sub_step = 1
                 
-            # [Step 1] 等待计算结果，并处理
+            # [Step 1] 等待计算结果
             elif self.sub_step == 1:
                 if self.async_future.done():
                     resp = self.async_future.result()
-                    # 处理结果 (添加时间戳)
                     self.computed_trajectory = self.motion.process_linear_path_result(resp)
                     
                     if self.computed_trajectory:
                         self.get_logger().info("Linear Path Computed. Executing...")
-                        # 发起执行 Action
                         self.async_future = self.motion.execute_trajectory(self.computed_trajectory)
                         self.sub_step = 2
                     else:
@@ -208,7 +224,7 @@ class VisualTactileController(Node):
                         self.state = SystemState.MOVING_TO_OBSERVE
                         self.sub_step = 0
 
-            # [Step 2] 等待 Goal Accepted (执行 Action)
+            # [Step 2] 等待 Goal Accepted
             elif self.sub_step == 2:
                 if self.async_future.done():
                     goal_handle = self.async_future.result()
@@ -222,7 +238,6 @@ class VisualTactileController(Node):
             # [Step 3] 等待执行完成
             elif self.sub_step == 3:
                 if self.async_future.done():
-                    # 只要不报错就算成功，误差由夹爪弥补
                     self.get_logger().info("Approach Done. Grasping...")
                     self.gripper.start_grasping_sequence()
                     self.state = SystemState.TACTILE_GRASPING
@@ -237,7 +252,7 @@ class VisualTactileController(Node):
                 self.state = SystemState.LIFTING
                 self.sub_step = 0
 
-        # ---------------------------------------------------------------------
+        
         # 7. 抬起 (Async Service + Async Action)
         # ---------------------------------------------------------------------
         elif self.state == SystemState.LIFTING:

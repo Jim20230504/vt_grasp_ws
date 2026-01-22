@@ -15,8 +15,6 @@ from rclpy.qos import qos_profile_sensor_data
 import math
 import tf_transformations
 from visualization_msgs.msg import Marker
-
-# 引入 YOLO-World
 from ultralytics import YOLOWorld
 
 class PerceptionModule:
@@ -25,23 +23,23 @@ class PerceptionModule:
         self.bridge = CvBridge()
         self.camera_model = image_geometry.PinholeCameraModel()
         
+        # 数据缓存
         self.latest_color_img = None
         self.latest_depth_img = None
+        self.latest_header = None # 🌟 核心：时间戳同步
         self.camera_info = None
         self.model = None 
         
         self.conf_threshold = conf_threshold
-        # 定义所有可能的物体
-        self.target_classes = ["mouse", "cup", "bottle", "apple", "orange", "tofu block", "paper ball", "plush toy", "cube", "cylinder"]
-        
-        # 定义必须“侧抓”的高个子物体
+        # 物体列表
+        self.target_classes = ["mouse", "cup", "bottle", "apple", "orange", "tofu block", "paper ball", "plush toy", "cube", "cylinder", "pingpong ball"]
         self.SIDE_GRASP_OBJECTS = ['cup', 'bottle', 'can', 'cylinder']
         
         self.node.get_logger().info(f"Loading YOLO-World: {model_name}...")
         try:
             self.model = YOLOWorld(model_name)
             self.model.set_classes(self.target_classes)
-            self.node.get_logger().info(f"YOLO-World Loaded. Classes: {self.target_classes}")
+            self.node.get_logger().info(f"YOLO-World Loaded.")
         except Exception as e:
             self.node.get_logger().error(f"YOLO Load Failed: {e}")
             
@@ -64,139 +62,191 @@ class PerceptionModule:
         self.marker_pub = node.create_publisher(Marker, '/yolo/target_marker', 10)
 
     # ------------------------------------------------------------------
-    # 🌟 核心算法：向量构建法 (Vector Construction)
-    # 自动计算 Top 和 Side 两种策略的完美姿态
+    # 🌟 核心算法 1：ROI 局部点云重心计算 (最准的方法)
     # ------------------------------------------------------------------
-    def get_object_pose_base_frame(self, u, v, angle_rad, grasp_strategy="TOP"):
-        pos = self._get_xyz(u, v) 
+    def _get_xyz_roi_centroid(self, bbox):
+        if self.latest_depth_img is None or self.camera_info is None or self.latest_header is None: 
+            return None
+
+        h_img, w_img = self.latest_depth_img.shape
+        x1, y1, x2, y2 = map(int, bbox)
+        
+        # 1. 确定采样区域 (ROI)
+        # 稍微缩小框，排除边缘背景
+        scale = 0.15 
+        bw, bh = x2 - x1, y2 - y1
+        cx1 = max(0, x1 + int(bw * scale))
+        cx2 = min(w_img, x2 - int(bw * scale))
+        cy1 = max(0, y1 + int(bh * scale))
+        cy2 = min(h_img, y2 - int(bh * scale))
+        
+        roi_depth = self.latest_depth_img[cy1:cy2, cx1:cx2]
+        if roi_depth.size == 0: return None
+
+        # 2. 提取有效深度
+        valid_mask = (roi_depth > 0) & (roi_depth < 1500) # 1.5m以内
+        if not np.any(valid_mask): return None
+        
+        z_vals = roi_depth[valid_mask] * 0.001 # mm -> m
+
+        # 3. 🌟 空间去噪 (球冠滤波)
+        # 只取距离最近的 3cm 数据，剔除桌面背景
+        min_z = np.min(z_vals)
+        sphere_mask = z_vals < (min_z + 0.03) 
+        clean_z = z_vals[sphere_mask]
+        
+        if clean_z.size == 0: return None
+
+        # 4. 反投影计算重心 (Centroid)
+        grid_y, grid_x = np.indices(roi_depth.shape)
+        # 还原到整图像素坐标
+        pixel_u = (grid_x + cx1)[valid_mask][sphere_mask]
+        pixel_v = (grid_y + cy1)[valid_mask][sphere_mask]
+
+        fx = self.camera_model.fx()
+        fy = self.camera_model.fy()
+        cx = self.camera_model.cx()
+        cy = self.camera_model.cy()
+
+        # 向量化计算
+        cam_x = (pixel_u - cx) * clean_z / fx
+        cam_y = (pixel_v - cy) * clean_z / fy
+        
+        # 取平均值作为物理重心
+        pt_cam_x = np.mean(cam_x)
+        pt_cam_y = np.mean(cam_y)
+        pt_cam_z = np.mean(clean_z)
+
+        # 5. TF 时间同步变换
+        ps = PointStamped()
+        ps.header = self.latest_header # 🌟 必须用图像时间戳
+        ps.point.x = pt_cam_x
+        ps.point.y = pt_cam_y
+        ps.point.z = pt_cam_z
+        
+        try:
+            trans = self.tf_buffer.lookup_transform(
+                'base_link', 
+                ps.header.frame_id, 
+                ps.header.stamp, 
+                timeout=rclpy.duration.Duration(seconds=1.0)
+            )
+            pt_base = tf2_geometry_msgs.do_transform_point(ps, trans)
+            
+            # 6. 坐标系修正 (如果TF反了)
+            bx, by, bz = pt_base.point.x, pt_base.point.y, pt_base.point.z
+            if bx < 0: bx = -bx; by = -by 
+            
+            return [bx, by, bz]
+            
+        except Exception as e:
+            self.node.get_logger().error(f"TF Error: {e}")
+            return None
+
+    # ------------------------------------------------------------------
+    # 🌟 核心算法 2：智能姿态决策 (融合版)
+    # ------------------------------------------------------------------
+    def get_object_pose_base_frame(self, u, v, angle_rad, grasp_strategy="TOP", bbox=None):
+        # 1. 优先使用点云重心法获取位置
+        if bbox:
+            pos = self._get_xyz_roi_centroid(bbox)
+        else:
+            # 回退：如果没有bbox，暂时返回None或用旧方法
+            return None
+            
         if not pos: return None
         bx, by, bz = pos
 
-        OFFSET_X = 0.01  # 向前补偿
-        OFFSET_Y = 0.00  # 左右补偿
-        OFFSET_Z = 0.00  # 高度补偿
-        
-        bx += OFFSET_X
-        by += OFFSET_Y
-        bz += OFFSET_Z
-        
-        # 使用 numpy 向量运算构建旋转矩阵
-        
+        # 2. 智能补偿
+        # 乒乓球/纸团：需要抓球心，且需要额外下压
         if grasp_strategy == "TOP":
-            # --- 场景 A: 顶抓 ---
-            # 目标 Z 轴 (Approach): 垂直指向地面 [0, 0, -1]
-            target_z_axis = np.array([0.0, 0.0, -1.0])
-            
-            # 目标 X 轴 (Orientation): 指向物体旋转方向 (cos, sin, 0)
+            bx += 0.02  # X轴补偿 (手眼标定残差)
+            by += 0.00
+            bz -= 0.015 # Z轴下压 (抓球心)
+        else:
+            # 侧抓物体通常比较高，不需要下压太多
+            bx += 0.02
+            bz += 0.00
+
+        # 3. 姿态计算 (Vector Construction)
+        if grasp_strategy == "TOP":
+            # 方案 A: 垂直向下 (最稳，适合球/方块)
+            # 即使物体旋转，夹爪也保持垂直，只旋转 Yaw 轴对齐物体长边
+            # 构造目标坐标系：Z轴向下，X轴沿物体方向
+            target_z_axis = np.array([0.0, 0.0, -1.0]) 
             target_x_axis_temp = np.array([np.cos(angle_rad), np.sin(angle_rad), 0.0])
             
         elif grasp_strategy == "SIDE":
-            # --- 场景 B: 侧抓 ---
-            # 假设机械臂在 (0,0)，物体在 (bx, by)。
-            # 目标 Z 轴 (Approach): 应该水平指向物体 (从 Robot -> Object)
-            # 计算平面方向向量
+            # 方案 B: 侧向水平 (适合瓶子)
+            # Z轴指向物体 (水平)
             dist = math.sqrt(bx**2 + by**2)
-            if dist < 0.001: return None # 重合了，无法计算方向
-            
             dir_x = bx / dist
             dir_y = by / dist
-            
-            # Z轴：水平指向物体
             target_z_axis = np.array([dir_x, dir_y, 0.0])
             
-            # X轴：垂直向下 [0, 0, -1] (这样夹爪是“握手”姿态/侧立姿态，不容易撞桌面)
-            # 如果你想要夹爪平躺着去夹，把这里改为 [dir_y, -dir_x, 0] (水平切线)
-            target_x_axis_temp = np.array([0.0, 0.0, -1.0]) 
-            
-        else:
-            return None
-
-        # --- 施密特正交化 (Gram-Schmidt) ---
-        # 1. 算出 Y 轴 = Z 叉乘 X
+            # X轴向下 (保持夹爪竖直)
+            target_x_axis_temp = np.array([0.0, 0.0, -1.0])
+        
+        # 4. Gram-Schmidt 正交化 (保证旋转矩阵合法)
         target_y_axis = np.cross(target_z_axis, target_x_axis_temp)
         norm_y = np.linalg.norm(target_y_axis)
-        if norm_y < 0.001: target_y_axis = np.array([0.0, 1.0, 0.0]) # 防止奇异
+        if norm_y < 0.001: target_y_axis = np.array([0.0, 1.0, 0.0])
         else: target_y_axis = target_y_axis / norm_y
             
-        # 2. 重新算出严格垂直的 X 轴 = Y 叉乘 Z
         target_x_axis = np.cross(target_y_axis, target_z_axis)
         target_x_axis = target_x_axis / np.linalg.norm(target_x_axis)
         
-        # 3. 构建矩阵
-        rotation_matrix = np.eye(4)
-        rotation_matrix[:3, 0] = target_x_axis # Col 0 = X
-        rotation_matrix[:3, 1] = target_y_axis # Col 1 = Y
-        rotation_matrix[:3, 2] = target_z_axis # Col 2 = Z
-        
-        # 4. 转四元数
-        q_final = tf_transformations.quaternion_from_matrix(rotation_matrix)
-        q_final = q_final / np.linalg.norm(q_final)
+        # 5. 转四元数
+        R = np.eye(4)
+        R[:3, 0] = target_x_axis
+        R[:3, 1] = target_y_axis
+        R[:3, 2] = target_z_axis
+        q = tf_transformations.quaternion_from_matrix(R)
+        q = q / np.linalg.norm(q)
 
-        return (bx, by, bz, q_final[0], q_final[1], q_final[2], q_final[3])
+        return (bx, by, bz, q[0], q[1], q[2], q[3])
+
+    # 兼容接口
+    def get_pose_compatible(self, u, v, angle, strategy):
+        bbox = getattr(self, 'current_bbox', None)
+        return self.get_object_pose_base_frame(u, v, angle, strategy, bbox)
 
     def detect_object(self):
-        """
-        YOLO-World 检测 + 决策 (Top vs Side)
-        """
+        # ... (YOLO 检测代码保持不变，记得保存 self.current_bbox) ...
         if not hasattr(self, 'model') or self.model is None:
-            self.node.get_logger().error("Model not loaded!", throttle_duration_sec=5.0)
-            return False, 0, 0, 0.0, "TOP" # 默认返回 TOP 防止崩溃
-
-        if self.latest_color_img is None:
             return False, 0, 0, 0.0, "TOP"
+        if self.latest_color_img is None: return False, 0, 0, 0.0, "TOP"
 
         detections = [] 
         try:
             results = self.model.predict(self.latest_color_img, conf=self.conf_threshold, verbose=False)
             result = results[0] 
-            if len(result.boxes) > 0:
-                detections = result.boxes.data.cpu().numpy()
-            
-            # 发布调试图
+            if len(result.boxes) > 0: detections = result.boxes.data.cpu().numpy()
+            # Publish debug image...
             annotated_img = result.plot() 
             ros_img = self.bridge.cv2_to_imgmsg(annotated_img, encoding="bgr8")
-            ros_img.header.frame_id = "camera_color_optical_frame"
             self.debug_pub.publish(ros_img)
         except Exception: pass
 
-        if len(detections) == 0:
-            return False, 0, 0, 0.0, "TOP"
+        if len(detections) == 0: return False, 0, 0, 0.0, "TOP"
         
-        # 策略：找置信度最高的
-        best_det = None
-        max_conf = -1.0 
-        
-        for det in detections:
-            conf = det[4]
-            if conf > max_conf:
-                max_conf = conf
-                best_det = det
-        
-        if best_det is None: return False, 0, 0, 0.0, "TOP"
-            
+        # Find best detection
+        best_det = max(detections, key=lambda x: x[4])
         x1, y1, x2, y2, conf, cls_id = best_det
-        cx = int((x1 + x2) / 2)
-        cy = int((y1 + y2) / 2)
-        
-        # 计算物体角度
+        cx, cy = int((x1+x2)/2), int((y1+y2)/2)
         bbox = [int(x1), int(y1), int(x2), int(y2)]
+        
+        # Save bbox for depth calculation
+        self.current_bbox = bbox 
+        
         angle = self._calculate_orientation(self.latest_color_img, bbox)
-        
-        # 获取名字并决策
         name = self.model.names[int(cls_id)]
-        
-        # 🌟 决策逻辑：如果是高个子，就侧抓
-        if name in self.SIDE_GRASP_OBJECTS:
-            strategy = "SIDE"
-        else:
-            strategy = "TOP"
+        strategy = "SIDE" if name in self.SIDE_GRASP_OBJECTS else "TOP"
             
         self.node.get_logger().info(f"Target: '{name}', Strategy: {strategy}, Angle: {math.degrees(angle):.1f}°")
-        
-        # 🌟 返回值增加 strategy
         return True, cx, cy, angle, strategy
 
-    
+    # ... (publish_marker, callbacks, calculate_orientation 保持不变) ...
     def publish_marker(self, x, y, z, qx, qy, qz, qw):
         marker = Marker()
         marker.header.frame_id = "base_link" 
@@ -214,7 +264,9 @@ class PerceptionModule:
     def info_callback(self, msg):
         if self.camera_info is None: self.camera_info = msg; self.camera_model.fromCameraInfo(msg)
     def color_callback(self, msg):
-        try: self.latest_color_img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        try: 
+            self.latest_color_img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            self.latest_header = msg.header
         except: pass
     def depth_callback(self, msg):
         try: self.latest_depth_img = self.bridge.imgmsg_to_cv2(msg, "16UC1")
@@ -234,22 +286,3 @@ class PerceptionModule:
         rect = cv2.minAreaRect(c); size = rect[1]; angle_deg = rect[2]
         if size[0] < size[1]: angle_deg = 90 + angle_deg
         return math.radians(angle_deg)
-    
-    def _get_xyz(self, u, v):
-        if self.latest_depth_img is None or self.camera_info is None: return None
-        h, w = self.latest_depth_img.shape
-        if not (0 <= u < w and 0 <= v < h): return None
-        d_raw = self.latest_depth_img[v-1:v+2, u-1:u+2]
-        if d_raw.size == 0: return None
-        depth_m = np.median(d_raw[d_raw > 0]) * 0.001
-        ray = self.camera_model.projectPixelTo3dRay((u, v))
-        pt_cam = np.array(ray) * depth_m
-        ps = PointStamped()
-        ps.header.frame_id = 'camera_color_optical_frame' 
-        ps.header.stamp = self.node.get_clock().now().to_msg()
-        ps.point.x, ps.point.y, ps.point.z = pt_cam[0], pt_cam[1], pt_cam[2]
-        try:
-            trans = self.tf_buffer.lookup_transform('base_link', ps.header.frame_id, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=1.0))
-            pt = tf2_geometry_msgs.do_transform_point(ps, trans)
-            return [pt.point.x, pt.point.y, pt.point.z]
-        except: return None0
