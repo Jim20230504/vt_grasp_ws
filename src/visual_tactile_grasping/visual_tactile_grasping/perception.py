@@ -135,7 +135,7 @@ class PerceptionModule:
             
             # 6. 坐标系修正 (如果TF反了)
             bx, by, bz = pt_base.point.x, pt_base.point.y, pt_base.point.z
-            if bx < 0: bx = -bx; by = -by 
+            if bx < 0: bx = bx; by = by 
             
             return [bx, by, bz]
             
@@ -158,16 +158,16 @@ class PerceptionModule:
         bx, by, bz = pos
 
         # 2. 智能补偿
-        # 乒乓球/纸团：需要抓球心，且需要额外下压
+        # 纸团：需要抓球心，且需要额外下压
         if grasp_strategy == "TOP":
             bx += 0.02  # X轴补偿 (手眼标定残差)
             by += 0.00
-            bz -= 0.015 # Z轴下压 (抓球心)
+            bz += 0.01 # Z轴下压 (抓球心)
         else:
             # 侧抓物体通常比较高，不需要下压太多
             bx += 0.02
             bz += 0.00
-
+        
         # 3. 姿态计算 (Vector Construction)
         if grasp_strategy == "TOP":
             # 方案 A: 垂直向下 (最稳，适合球/方块)
@@ -177,7 +177,7 @@ class PerceptionModule:
             target_x_axis_temp = np.array([np.cos(angle_rad), np.sin(angle_rad), 0.0])
             
         elif grasp_strategy == "SIDE":
-            # 方案 B: 侧向水平 (适合瓶子)
+            # 方案 B: 侧向水平 (适合瓶子) 
             # Z轴指向物体 (水平)
             dist = math.sqrt(bx**2 + by**2)
             dir_x = bx / dist
@@ -195,7 +195,7 @@ class PerceptionModule:
             
         target_x_axis = np.cross(target_y_axis, target_z_axis)
         target_x_axis = target_x_axis / np.linalg.norm(target_x_axis)
-        
+        # angle_rad = 0.0
         # 5. 转四元数
         R = np.eye(4)
         R[:3, 0] = target_x_axis
@@ -212,38 +212,67 @@ class PerceptionModule:
         return self.get_object_pose_base_frame(u, v, angle, strategy, bbox)
 
     def detect_object(self):
-        # ... (YOLO 检测代码保持不变，记得保存 self.current_bbox) ...
+        """
+        YOLO-World 检测 (调试增强版)
+        """
+        # 1. 检查模型状态
         if not hasattr(self, 'model') or self.model is None:
+            self.node.get_logger().error("Model not loaded!", throttle_duration_sec=5.0)
             return False, 0, 0, 0.0, "TOP"
-        if self.latest_color_img is None: return False, 0, 0, 0.0, "TOP"
 
-        detections = [] 
+        # 2. 检查图像数据是否存在
+        if self.latest_color_img is None:
+            self.node.get_logger().warn("No Image Data! Check camera topic and driver.", throttle_duration_sec=2.0)
+            return False, 0, 0, 0.0, "TOP"
+
+        detections = []
+        # 默认调试图就是原图（防止没检测到时发黑屏，方便确认相机视野）
+        annotated_img = self.latest_color_img.copy()
+
+        # 3. 执行 YOLO 预测
         try:
             results = self.model.predict(self.latest_color_img, conf=self.conf_threshold, verbose=False)
             result = results[0] 
-            if len(result.boxes) > 0: detections = result.boxes.data.cpu().numpy()
-            # Publish debug image...
-            annotated_img = result.plot() 
-            ros_img = self.bridge.cv2_to_imgmsg(annotated_img, encoding="bgr8")
-            self.debug_pub.publish(ros_img)
-        except Exception: pass
+            
+            # 如果有检测结果，用 YOLO 自带的绘图功能覆盖 annotated_img
+            if len(result.boxes) > 0:
+                detections = result.boxes.data.cpu().numpy()
+                annotated_img = result.plot() 
+        except Exception as e:
+            self.node.get_logger().error(f"YOLO Prediction Error: {e}")
 
-        if len(detections) == 0: return False, 0, 0, 0.0, "TOP"
+        # 4. 🔥🔥🔥 强制发布调试图像 (无论是否检测到物体)
+        # 这样你在 RViz 订阅 /yolo/debug_image 就能看到相机到底在看哪里
+        try:
+            ros_img = self.bridge.cv2_to_imgmsg(annotated_img, encoding="bgr8")
+            ros_img.header.frame_id = "camera_color_optical_frame"
+            self.debug_pub.publish(ros_img)
+        except Exception as e:
+            self.node.get_logger().error(f"Publish Debug Image Error: {e}")
+
+        # 5. 如果没检测到，打印日志并返回
+        if len(detections) == 0: 
+            self.node.get_logger().info("Detected nothing. (Check lighting or threshold)", throttle_duration_sec=2.0)
+            return False, 0, 0, 0.0, "TOP"
         
-        # Find best detection
+        # 6. 处理检测结果 (找置信度最高的)
         best_det = max(detections, key=lambda x: x[4])
         x1, y1, x2, y2, conf, cls_id = best_det
         cx, cy = int((x1+x2)/2), int((y1+y2)/2)
         bbox = [int(x1), int(y1), int(x2), int(y2)]
         
-        # Save bbox for depth calculation
+        # 保存 bbox 供后续深度计算使用
         self.current_bbox = bbox 
         
+        # 计算角度
         angle = self._calculate_orientation(self.latest_color_img, bbox)
+        
+        # 决策策略
         name = self.model.names[int(cls_id)]
         strategy = "SIDE" if name in self.SIDE_GRASP_OBJECTS else "TOP"
             
         self.node.get_logger().info(f"Target: '{name}', Strategy: {strategy}, Angle: {math.degrees(angle):.1f}°")
+        
         return True, cx, cy, angle, strategy
 
     # ... (publish_marker, callbacks, calculate_orientation 保持不变) ...

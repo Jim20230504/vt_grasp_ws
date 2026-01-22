@@ -141,7 +141,7 @@ class VisualTactileController(Node):
             if self.sub_step == 0:
                 # 🌟 调整预备点高度：如果是乒乓球，预备点最好不要太高，防止视觉误差放大
                 # 但为了避障，保持 20cm 比较安全
-                target_x, target_y, target_z = tx, ty, tz + 0.20 
+                target_x, target_y, target_z = tx, ty, tz + 0.15
                 
                 if self.current_strategy == "SIDE":
                     side_grasp_z = max(tz, 0.05)
