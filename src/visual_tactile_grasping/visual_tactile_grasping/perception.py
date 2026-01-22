@@ -162,7 +162,7 @@ class PerceptionModule:
         if grasp_strategy == "TOP":
             bx += 0.02  # X轴补偿 (手眼标定残差)
             by += 0.00
-            bz += 0.01 # Z轴下压 (抓球心)
+            bz += 0.05 # Z轴下压 (抓球心)
         else:
             # 侧抓物体通常比较高，不需要下压太多
             bx += 0.02
