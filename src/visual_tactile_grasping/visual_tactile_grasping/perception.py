@@ -32,7 +32,7 @@ class PerceptionModule:
         
         self.conf_threshold = conf_threshold
         # 物体列表
-        self.target_classes = ["mouse", "cup", "bottle", "apple", "orange", "tofu block", "paper ball", "plush toy", "cube", "cylinder", "pingpong ball"]
+        self.target_classes = ["mouse", "cup", "bottle", "apple", "orange", "sponge", "tofu block", "paper ball", "plush toy", "cube", "cylinder", "pingpong ball"]
         self.SIDE_GRASP_OBJECTS = ['cup', 'bottle', 'can', 'cylinder']
         
         self.node.get_logger().info(f"Loading YOLO-World: {model_name}...")
@@ -133,7 +133,7 @@ class PerceptionModule:
             )
             pt_base = tf2_geometry_msgs.do_transform_point(ps, trans)
             
-            # 6. 坐标系修正 (如果TF反了)
+            # 6. 坐标系修正 
             bx, by, bz = pt_base.point.x, pt_base.point.y, pt_base.point.z
             if bx < 0: bx = bx; by = by 
             
@@ -160,9 +160,9 @@ class PerceptionModule:
         # 2. 智能补偿
         # 纸团：需要抓球心，且需要额外下压
         if grasp_strategy == "TOP":
-            bx += 0.02  # X轴补偿 (手眼标定残差)
+            bx += 0.0  # X轴补偿 (手眼标定残差)
             by += 0.00
-            bz += 0.05 # Z轴下压 (抓球心)
+            bz += 0.01 # Z轴下压 (抓球心)
         else:
             # 侧抓物体通常比较高，不需要下压太多
             bx += 0.02

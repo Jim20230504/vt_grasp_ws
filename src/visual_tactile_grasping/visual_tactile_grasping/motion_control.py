@@ -130,7 +130,7 @@ class MotionControl:
         oc.orientation = Quaternion(x=qx, y=qy, z=qz, w=qw)
         oc.absolute_x_axis_tolerance = 0.2
         oc.absolute_y_axis_tolerance = 0.2
-        oc.absolute_z_axis_tolerance = 3.14 
+        oc.absolute_z_axis_tolerance = 1.0
         oc.weight = 1.0
         c.orientation_constraints.append(oc)
         
