@@ -1,33 +1,64 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription, TimerAction, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
-
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
-
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
-
+from moveit_configs_utils import MoveItConfigsBuilder
 
 def generate_launch_description():
     
     # ==========================================
-    # 1. 硬件驱动层
+    # 1. 核心配置 (MoveIt + Pilz)
     # ==========================================
-
-    # [A] 睿尔曼机械臂 (RM65) - 使用修改后的 Bringup
-    # 让它加载 'ts_robot_description' 包里的 'ts_robot.urdf.xacro'
-    # 这样它就会发布包含 [机械臂+夹爪+相机] 的完整 TF 树。
-    rm_bringup_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory('rm_bringup'), 'launch', 'rm_65_bringup.launch.py')
-        ]),
+    # 🔥 关键：这里必须加载 Pilz，否则 elegant_motion.py 会报错
+    
+    moveit_config = (
+        MoveItConfigsBuilder("ts_robot", package_name="rm_65_config")
+        .robot_description(file_path="config/rm_65_description.urdf.xacro")
+        .robot_description_semantic(file_path="config/rm_65_description.srdf")
+        .trajectory_execution(file_path="config/moveit_controllers.yaml")
+        .planning_pipelines(pipelines=["ompl", "pilz_industrial_motion_planner"]) # 👈 启用 Pilz
+        .to_moveit_configs()
     )
 
-    # 关键修改：显式开启 TF 发布，确保相机数据帧能连上机器人 TF 树
+    # MoveGroup 节点
+    run_move_group_node = Node(
+        package="moveit_ros_move_group",
+        executable="move_group",
+        output="screen",
+        parameters=[moveit_config.to_dict()],
+    )
+
+    # RViz 节点 (加载 MoveIt 配置)
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="log",
+        parameters=[
+            moveit_config.robot_description,
+            moveit_config.robot_description_semantic,
+            moveit_config.planning_pipelines,
+            moveit_config.robot_description_kinematics,
+        ],
+        arguments=["-d", os.path.join(get_package_share_directory("rm_65_config"), "config", "moveit.rviz")],
+    )
+
+    # ==========================================
+    # 2. 硬件驱动层
+    # ==========================================
+
+    # [A] 睿尔曼机械臂驱动
+    rm_driver_node = Node(
+        package='rm_driver',
+        executable='rm_driver',
+        name='rm_driver',
+        output='screen',
+    )
+    
     # [B] RealSense 相机
     realsense_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -36,7 +67,7 @@ def generate_launch_description():
         launch_arguments={
             'camera_name': 'camera',
             'base_frame_id': 'camera_link',
-            'publish_tf': 'false',             
+            'publish_tf': 'true',  # 这里建议开 True，除非你有专门的 robot_state_publisher 发布了相机TF
             'tf_publish_rate': '30.0',
             'align_depth.enable': 'true',
             'pointcloud.enable': 'true',
@@ -59,47 +90,43 @@ def generate_launch_description():
             os.path.join(get_package_share_directory('tactile_sensor_ros'), 'launch', 'sensor.launch.py')
         ])
     )
-    # 找到 MoveIt 的 RViz 配置文件
-    # 配置文件在 rm_65_moveit_config/config/moveit.rviz
-    rviz_config_file = PathJoinSubstitution(
-        [FindPackageShare("rm_65_config"), "config", "moveit.rviz"]
+
+    # [E] Robot State Publisher (如果 rm_bringup 没发，这里要发)
+    # 如果上面的 rm_driver 不发 TF，你需要这个
+    rsp_node = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        output="both",
+        parameters=[moveit_config.robot_description],
     )
-    rviz_node = Node(
-        package="rviz2",
-        executable="rviz2",
-        name="rviz2",
-        output="log",
-        arguments=["-d", rviz_config_file], # 加载配置文件
-        # parameters=[
-        #     robot_description,
-        #     robot_description_semantic,
-        #     kinematics_yaml,
-            
-        # ],
-    )
+
     # ==========================================
-    # 3. 应用层
+    # 3. 应用层 (新的 MTC 风格任务)
     # ==========================================
 
-    # 我们的主控制器 (延迟15秒启动，确保 MoveIt 完全就绪)
-    main_controller = Node(
+    # 🔥 替换：旧的 main_controller -> 新的 elegant_task
+    task_node = Node(
         package='visual_tactile_grasping',
-        executable='main_controller',
-        name='visual_tactile_controller',
-        output='screen'
+        # 注意：你需要去 setup.py 把 elegant_task.py 注册为可执行文件
+        executable='main_controller', 
+        name='elegant_pick_task',
+        output='screen',
+        parameters=[moveit_config.to_dict()] # 让节点能读到 robot_description
     )
     
-    delayed_controller = TimerAction(
-        period=15.0, 
-        actions=[main_controller]
+    # 延迟启动，等待 MoveGroup 就绪
+    delayed_task = TimerAction(
+        period=10.0, 
+        actions=[task_node]
     )
 
     return LaunchDescription([
-        rm_bringup_launch,   # 负责：机械臂控制 + 发布完整 URDF TF 树
-        realsense_launch,    # 负责：相机数据 + 光心 TF
+        rsp_node,
+        rm_driver_node,
+        realsense_launch,
         gripper_node,
         tactile_launch,
-        # gripper_tcp_tf,     
-        delayed_controller,
-        rviz_node
+        run_move_group_node, 
+        rviz_node,
+        delayed_task
     ])
