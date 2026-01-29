@@ -154,8 +154,9 @@ class TactileSensorNode(Node):
                     tactile_msg.fingers.append(finger_data_msg)
                     connected_sensor_cnt += 1
 
-        # 发布消息 (即使没有手指连接，也可以发布空消息心跳)
-        self.pub_tactile.publish(tactile_msg)
+        # 发布消息 
+        if tactile_msg.fingers:
+            self.pub_tactile.publish(tactile_msg)
 
         # 同步逻辑 (1秒一次)
         now = time.time()
