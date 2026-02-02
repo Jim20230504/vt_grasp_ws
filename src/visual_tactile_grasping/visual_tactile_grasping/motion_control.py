@@ -10,6 +10,7 @@ from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import Pose, Quaternion
 from tf2_ros import Buffer, TransformListener
 from rclpy.duration import Duration
+from moveit_msgs.msg import JointConstraint
 
 class ElegantMotion:
     def __init__(self, node: Node, group_name="rm_group"):
@@ -121,6 +122,37 @@ class ElegantMotion:
         goal.request.goal_constraints.append(c)
         
         self.node.get_logger().info(f"🚀 Async PTP -> ({x:.3f}, {y:.3f}, {z:.3f})")
+        return self._move_action_client.send_goal_async(goal)
+    
+    # ... (在 move_ptp 方法后面添加)
+
+    def move_to_joints(self, joint_values, velocity=0.5):
+        """
+        [PTP] 关节空间移动 (Async)
+        :param joint_values: list of float, 关节角度
+        """
+        goal = self._create_pilz_goal("PTP", vel_scale=velocity, acc_scale=velocity)
+        
+        c = Constraints()
+        c.name = "pilz_joint_target"
+        
+        # 获取关节名
+        
+        joint_names = ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']
+        
+        for i, val in enumerate(joint_values):
+            if i >= len(joint_names): break
+            jc = JointConstraint()
+            jc.joint_name = joint_names[i]
+            jc.position = float(val)
+            jc.tolerance_above = 0.01
+            jc.tolerance_below = 0.01
+            jc.weight = 1.0
+            c.joint_constraints.append(jc)
+            
+        goal.request.goal_constraints.append(c)
+        
+        self.node.get_logger().info(f"🦾 Async PTP Joints...")
         return self._move_action_client.send_goal_async(goal)
 
     def move_lin(self, x, y, z, qx, qy, qz, qw, velocity=0.2):

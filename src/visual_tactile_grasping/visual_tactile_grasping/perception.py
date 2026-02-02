@@ -38,8 +38,8 @@ class PerceptionModule:
         # 这里放你明确知道名字的东西
         self.target_classes = [
             "mouse", "cup", "bottle", "apple", "white charger", "sponge", 
-            "tofu block", "crumpled paper", "paper ball", "trash", # 纸团建议用 crumpled paper
-            "plush toy", "cube", "cylinder", "pingpong ball"
+            "tofu block", "crumpled paper", "paper ball", "trash", 
+            "plush toy", "cube", "cylinder", "pingpong ball", "hand"
         ]
         
         # === 2. 通用泛化清单 (Tier 2) ===

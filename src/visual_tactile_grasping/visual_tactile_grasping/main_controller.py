@@ -9,12 +9,13 @@ import numpy as np
 import math
 import time
 import copy
-from utils import OBSERVATION_JOINT_POSE
+from visual_tactile_grasping.utils import OBSERVATION_JOINT_POSE
 
 # 引入你的模块 (请确保文件名匹配)
-from motion_control import ElegantMotion
-from perception import PerceptionModule
-from tactile_gripper import TactileGripper # 假设你保存了那个自适应夹爪代码
+from visual_tactile_grasping.motion_control import ElegantMotion
+from visual_tactile_grasping.perception import PerceptionModule
+from visual_tactile_grasping.tactile_gripper import TactileGripper # 假设你保存了那个自适应夹爪代码
+from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, BoundingVolume, JointConstraint  
 
 class ElegantPickTask(Node):
     def __init__(self):
